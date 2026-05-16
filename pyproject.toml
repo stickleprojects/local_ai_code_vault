@@ -1,0 +1,9 @@
+[project]
+name = "local-ai-code-vault"
+version = "0.1.0"
+description = "Semantic code search service for Claude — Phase 1.1: API service & repo registry"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
