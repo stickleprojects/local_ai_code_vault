@@ -24,9 +24,18 @@ pwsh -NoProfile -File "$env:VAULT_HOME/scripts/<name>.ps1" <repo-path> [-Switche
 ```
 
 `<repo-path>` is the directory the user is working in (use `.` if you
-are already there). If `$env:VAULT_HOME` is unset, tell the user to run
-`pwsh -NoProfile -File scripts/install-skill.ps1` from their vault clone
-and restart Claude Code.
+are already there).
+
+**Run only the script invocation above — no preflight probes.** Do not
+run separate shell commands to test `$env:VAULT_HOME`, list the scripts
+directory, or otherwise inspect the environment first. Each extra
+command is one more permission prompt for the user, and `$env:`-probe
+one-liners trip Claude Code's embedded-expression guard. The script
+itself already handles a missing/empty `VAULT_HOME`: just invoke it and
+read the result. If the invocation fails because `$env:VAULT_HOME` is
+unset (path not found / empty), tell the user to run `pwsh -NoProfile
+-File scripts/install-skill.ps1` from their vault clone and restart
+Claude Code — derive that from the failure, don't pre-check for it.
 
 Every script prints **one JSON object** on stdout (`ok`, `code`, plus
 fields) and uses stable exit codes. Parse stdout regardless of success.
