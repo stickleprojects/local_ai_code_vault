@@ -51,7 +51,7 @@ Claude and Copilot intentionally reuse the same runtime contracts:
   business logic lives.
 - **Claude skill (`SKILL.md`)** delegates `/vault-*` commands to those
   scripts.
-- **Copilot MCP adapter (`mcp/vault/server.py`)** delegates MCP tools to
+- **Copilot MCP adapter (`vault_mcp/vault/server.py`)** delegates MCP tools to
   the same scripts.
 
 This keeps behavior aligned across both clients and avoids duplicated

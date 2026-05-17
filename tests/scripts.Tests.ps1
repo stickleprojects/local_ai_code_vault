@@ -351,12 +351,42 @@ Describe 'install-copilot.ps1' {
 
         Test-Path $settings | Should -BeTrue
         $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
-        $cfg['chat.mcp.servers'].Contains('vault') | Should -BeTrue
-        $cfg['chat.mcp.servers']['vault']['args'][0] | Should -Match 'mcp/vault/server.py'
+        $cfg['mcp.servers'].Contains('vault') | Should -BeTrue
+        $cfg['mcp.servers']['vault']['args'][-1] | Should -Match 'vault_mcp/vault/server.py'
+        $cfg['mcp.servers']['vault']['command'] | Should -Not -BeNullOrEmpty
 
         $instr = Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md'
         Test-Path $instr | Should -BeTrue
         (Get-Content -Raw $instr) | Should -Match 'vault_health'
+    }
+
+    It 'handles JSONC settings, preserves unrelated keys, and reports backup on rewrite' {
+        $settings = Join-Path $TestDrive 'settings-comments.json'
+        @'
+{
+  // keep this user's theme
+  "workbench.colorTheme": "Solarized Dark",
+  "mcp.servers": {
+    "other": {
+      "command": "python",
+      "args": ["other.py"]
+    }
+  }
+}
+'@ | Set-Content -LiteralPath $settings
+
+        $instructionsRoot = Join-Path $TestDrive 'instructions-comments'
+        $r = Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist')
+        $r.Code | Should -Be 0
+        $r.Json.settings_rewritten | Should -BeTrue
+        $r.Json.settings_backup_path | Should -Not -BeNullOrEmpty
+        Test-Path $r.Json.settings_backup_path | Should -BeTrue
+        $r.Json.settings_notice | Should -Match 'rewritten'
+
+        $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
+        $cfg['workbench.colorTheme'] | Should -Be 'Solarized Dark'
+        $cfg['mcp.servers'].Contains('other') | Should -BeTrue
+        $cfg['mcp.servers'].Contains('vault') | Should -BeTrue
     }
 
     It '-Remove unregisters MCP and deletes installed instruction file' {
@@ -369,7 +399,7 @@ Describe 'install-copilot.ps1' {
         $r.Json.removed | Should -BeTrue
 
         $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
-        $cfg['chat.mcp.servers'].Contains('vault') | Should -BeFalse
+        $cfg['mcp.servers'].Contains('vault') | Should -BeFalse
         Test-Path (Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md') | Should -BeFalse
     }
 }

@@ -189,27 +189,20 @@ def _tool_list_result() -> dict[str, Any]:
 
 
 def _read_message() -> dict[str, Any] | None:
-    headers: dict[str, str] = {}
     while True:
         line = sys.stdin.buffer.readline()
         if not line:
             return None
-        if line in (b"\r\n", b"\n"):
-            break
-        key, _, value = line.decode("utf-8").partition(":")
-        headers[key.strip().lower()] = value.strip()
-
-    content_length = int(headers.get("content-length", "0"))
-    body = sys.stdin.buffer.read(content_length)
-    if not body:
-        return None
-    return json.loads(body.decode("utf-8"))
+        text = line.decode("utf-8").strip()
+        if not text:
+            continue
+        return json.loads(text)
 
 
 def _write_message(message: dict[str, Any]) -> None:
-    payload = json.dumps(message, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
-    sys.stdout.buffer.write(f"Content-Length: {len(payload)}\r\n\r\n".encode("ascii"))
-    sys.stdout.buffer.write(payload)
+    payload = json.dumps(message, ensure_ascii=False, separators=(",", ":"))
+    sys.stdout.buffer.write(payload.encode("utf-8"))
+    sys.stdout.buffer.write(b"\n")
     sys.stdout.buffer.flush()
 
 

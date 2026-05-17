@@ -125,8 +125,8 @@ clone; `-Remove` uninstalls. Restart Claude Code afterwards.
 
 ### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
 One-time user-scope Copilot setup (no per-repo config): records
-`VAULT_HOME`, registers MCP server `mcp/vault/server.py` under VS Code
-user settings (`chat.mcp.servers.vault`), installs global instruction
+`VAULT_HOME`, registers MCP server `vault_mcp/vault/server.py` under VS
+Code user settings (`mcp.servers.vault`), installs global instruction
 asset (`copilot/instructions/vault-global.instructions.md`), and runs a
 post-install `vault-health.ps1` check. `-Remove` unregisters MCP +
 instruction entry and deletes the installed instruction file.
