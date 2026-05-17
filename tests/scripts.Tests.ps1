@@ -327,7 +327,13 @@ Describe 'install-skill.ps1' {
         $r.Json.installed | Should -BeTrue
         $dest = Join-Path $root 'vault' 'SKILL.md'
         Test-Path $dest | Should -BeTrue
-        (Get-Content -Raw $dest) | Should -Match '\$env:VAULT_HOME'
+        $skill = Get-Content -Raw $dest
+        # Placeholder must be substituted with the literal scripts dir so
+        # the skill invokes scripts via `&` with no $env: / child pwsh.
+        $skill | Should -Not -Match '\{\{VAULT_SCRIPTS\}\}'
+        $r.Json.scripts_dir | Should -Not -BeNullOrEmpty
+        Test-Path $r.Json.scripts_dir | Should -BeTrue
+        $skill | Should -BeLike "*$($r.Json.scripts_dir)*"
         Test-Path $r.Json.vault_home | Should -BeTrue   # points at a real clone
     }
 
