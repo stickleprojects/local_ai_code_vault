@@ -1,0 +1,107 @@
+# Phase 1.4 — long-running stack: qdrant + embedder + api.
+#
+# NO source code is ever mounted into these services (AD-1). The
+# ephemeral indexer (Phase 1.2) is NOT here; it runs per job via
+# `docker run --rm` and joins this stack's network by name — see
+# README_SETUP.md ("Indexer network join").
+#
+# Project name is pinned so that network name is deterministic
+# (`vault_default`), which the indexer relies on.
+name: vault
+
+services:
+  # One-shot: vendor the B-1-proven GGUF into a named volume, pinned by
+  # SHA256, straight from Hugging Face (NOT via Ollama — see plan B-1).
+  # Idempotent: re-verifies and exits fast if already present.
+  model-fetch:
+    image: alpine:3.20
+    volumes:
+      - model_cache:/models
+    environment:
+      MODEL_REPO: ${MODEL_REPO:-nomic-ai/nomic-embed-code-GGUF}
+      MODEL_FILE: ${MODEL_FILE:-nomic-embed-code.Q4_K_M.gguf}
+      MODEL_SHA256: ${MODEL_SHA256:?set MODEL_SHA256 in .env (see .env.example)}
+      HF_BASE: ${HF_BASE:-https://huggingface.co}
+    command:
+      - sh
+      - -c
+      - |
+        set -e
+        f="/models/$${MODEL_FILE}"
+        if [ -f "$$f" ] && echo "$${MODEL_SHA256}  $$f" | sha256sum -c - >/dev/null 2>&1; then
+          echo "model already present and SHA256-verified"; exit 0
+        fi
+        apk add --no-cache curl >/dev/null
+        echo "downloading $${MODEL_FILE} from $${MODEL_REPO} ..."
+        curl -fSL "$${HF_BASE}/$${MODEL_REPO}/resolve/main/$${MODEL_FILE}?download=true" -o "$$f.part"
+        echo "$${MODEL_SHA256}  $$f.part" | sha256sum -c -
+        mv "$$f.part" "$$f"
+        echo "model vendored and SHA256-verified"
+    restart: "no"
+
+  qdrant:
+    image: qdrant/qdrant:v1.12.4
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      # Exposed for local debugging only; the api reaches it in-network.
+      - "${QDRANT_PORT:-6333}:6333"
+    restart: unless-stopped
+
+  embedder:
+    image: ghcr.io/ggml-org/llama.cpp:server-cuda
+    depends_on:
+      model-fetch:
+        condition: service_completed_successfully
+    volumes:
+      - model_cache:/models:ro
+    # B-1 locked decision D2: --embeddings --pooling last is mandatory.
+    # Dropping --pooling last is the original all-zero-vector failure.
+    command:
+      - -m
+      - /models/${MODEL_FILE:-nomic-embed-code.Q4_K_M.gguf}
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+      - --embeddings
+      - --pooling
+      - last
+    # B-1 D3: GPU, model kept warm. Requires nvidia-container-toolkit.
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+    depends_on:
+      qdrant:
+        condition: service_started
+      embedder:
+        condition: service_started
+    environment:
+      QDRANT_URL: http://qdrant:6333
+      EMBEDDER_URL: http://embedder:8080
+    ports:
+      - "${API_PORT:-8000}:8000"
+    # Authoritative stack health: /api/status reports qdrant connectivity
+    # too. (qdrant/embedder base images ship no shell tooling to run
+    # their own healthchecks reliably — see README_SETUP.md.)
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/api/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 18
+      start_period: 30s
+    restart: unless-stopped
+
+volumes:
+  qdrant_data:
+  model_cache:

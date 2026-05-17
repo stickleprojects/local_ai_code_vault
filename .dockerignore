@@ -1,0 +1,15 @@
+# Shared by the api and indexer build contexts (both use context `.`).
+# Do NOT ignore src/ or indexer/ — each image needs one of them.
+.git
+.github
+.venv
+**/__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+tests
+docs
+*.md
+.env
+.claude
+docker-compose.yml
