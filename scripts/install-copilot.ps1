@@ -10,6 +10,8 @@
    4) runs a post-install vault health check.
 
   This does not modify project repos and does not alter Claude setup.
+  It shares the same script contracts used by the Claude skill so both
+  adapters stay aligned without duplicated vault logic.
 
 .PARAMETER SettingsPath
   VS Code user settings.json path (defaults by OS).

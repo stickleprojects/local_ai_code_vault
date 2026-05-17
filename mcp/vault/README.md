@@ -15,3 +15,7 @@ Implementation contract:
 - Script stdout JSON is passed through as tool payload.
 - Existing script exit-code semantics remain authoritative.
 - No script business logic is duplicated here.
+
+Claude and Copilot reuse the same script layer: Claude's `/vault-*`
+skill and Copilot's MCP tools are parallel adapters over identical
+script contracts.

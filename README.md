@@ -43,6 +43,20 @@ scripts by absolute path, and they take the target repo as an argument.
 The skill is pure delegation; all logic is in standalone, individually
 runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
+## Shared Claude + Copilot architecture
+
+Claude and Copilot intentionally reuse the same runtime contracts:
+
+- **One script layer (`scripts/*.ps1`)** is the only place where vault
+  business logic lives.
+- **Claude skill (`SKILL.md`)** delegates `/vault-*` commands to those
+  scripts.
+- **Copilot MCP adapter (`mcp/vault/server.py`)** delegates MCP tools to
+  the same scripts.
+
+This keeps behavior aligned across both clients and avoids duplicated
+implementation paths.
+
 ## Copilot global setup (MCP, no per-repo config)
 
 Copilot can use the same host scripts via a thin MCP adapter, installed
