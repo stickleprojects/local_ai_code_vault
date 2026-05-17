@@ -258,9 +258,9 @@ Each script: clear name, single responsibility, runnable standalone with documen
 - Multi-project: index 2+ repos in different host locations, switch between them, verify isolation by `repo_id`. Stale detection after a commit. Git-hook auto-reindex. Background completion reporting. `/vault-inspect` reports correct per-language counts on a mixed C#/Py/JS/TS repo and lists skipped files.
 - **Owner:** User (Kieron) — ~30 min
 
-#### Task 3.3: Documentation
+#### Task 3.3: Documentation — **DONE (2026-05-17)**
 
-- `docs/SETUP.md`, `docs/TROUBLESHOOTING.md`, `docs/EXAMPLES.md`, `scripts/README.md` (script arg/JSON contracts), `docs/ARCHITECTURE.md`.
+- `docs/SETUP.md`, `docs/TROUBLESHOOTING.md`, `docs/EXAMPLES.md`, `docs/ARCHITECTURE.md` written (synthesize, don't duplicate — they cross-link `README_SETUP.md` for the GPU stack and `scripts/README.md` for I/O contracts, both of which already existed). README gains a Documentation index.
 - **Owner:** Claude
 
 ---

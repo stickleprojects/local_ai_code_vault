@@ -43,6 +43,18 @@ scripts by absolute path, and they take the target repo as an argument.
 The skill is pure delegation; all logic is in standalone, individually
 runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
+## Documentation
+
+- [docs/SETUP.md](docs/SETUP.md) — zero-to-first-search walkthrough.
+- [docs/EXAMPLES.md](docs/EXAMPLES.md) — concrete command + script usage.
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — diagnose by exit
+  code / symptom.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the parts fit; the
+  three sacred contracts.
+- [scripts/README.md](scripts/README.md) — script I/O contracts.
+- [plan.md](plan.md) — authoritative design (`AD-*`, phases).
+- [CHANGELOG.md](CHANGELOG.md) — release history & versioning convention.
+
 ## Development
 
 - Tests: `pytest` (Python, in-memory fakes) and `tests/scripts.Tests.ps1`
@@ -56,5 +68,6 @@ runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
 ## Status
 
-Phases 1 (stack, indexer, query) and 2 (skill + scripts) complete.
-Phase 3 (testing & validation) next — see [plan.md](plan.md).
+Phases 1 (stack, indexer, query), 2 (skill + scripts), and 3 (testing,
+validation & docs) complete. Phase 4.2 (CHANGELOG + release tagging)
+done; 4.1/4.3 (image publishing) deferred — see [plan.md](plan.md).
