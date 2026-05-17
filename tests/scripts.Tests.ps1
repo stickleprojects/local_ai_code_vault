@@ -352,7 +352,8 @@ Describe 'install-copilot.ps1' {
         Test-Path $settings | Should -BeTrue
         $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
         $cfg['mcp.servers'].Contains('vault') | Should -BeTrue
-        $cfg['mcp.servers']['vault']['args'][-1] | Should -Match 'vault_mcp/vault/server.py'
+        # Separator-agnostic: Windows yields backslashes, POSIX forward slashes.
+        $cfg['mcp.servers']['vault']['args'][-1] | Should -Match 'vault_mcp[\\/]vault[\\/]server\.py'
         $cfg['mcp.servers']['vault']['command'] | Should -Not -BeNullOrEmpty
 
         $instr = Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md'
