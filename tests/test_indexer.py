@@ -1,0 +1,148 @@
+"""Indexer orchestration + the producer/consumer registry contract.
+
+The round-trip test is the important one: it feeds the indexer's
+registry write straight into Phase 1.1's ``QdrantRegistry``/``Inspector``
+read path, so a divergence in the payload shape fails CI instead of
+silently making repos look unregistered in production.
+"""
+
+import os
+
+from indexer.index import run_index
+from src.inspection import Inspector
+from src.models import EMBED_DIM
+from src.registry import QdrantRegistry
+from tests.indexer_fakes import FakeEmbedder, FakeWriter
+
+
+def _make_repo(tmp_path):
+    (tmp_path / "pkg").mkdir()
+    (tmp_path / "pkg" / "app.py").write_text(
+        "def handler():\n    return 1\n\n\nclass Svc:\n    def run(self):\n        return 2\n"
+    )
+    (tmp_path / "lib.ts").write_text(
+        "export function add(a: number, b: number) { return a + b; }\n"
+    )
+    (tmp_path / "Calc.cs").write_text(
+        "public class Calc { public int Add(int a,int b){return a+b;} }\n"
+    )
+    (tmp_path / "notes.txt").write_text("not code, must be skipped\n")
+    (tmp_path / "blob.bin").write_bytes(b"\x00\x01\x02binary\x00")
+    # An ignored directory must be pruned entirely.
+    (tmp_path / ".git").mkdir()
+    (tmp_path / ".git" / "config").write_text("[core]\n")
+    return tmp_path
+
+
+def test_full_index_counts_and_payload(tmp_path):
+    repo = _make_repo(tmp_path)
+    emb = FakeEmbedder(EMBED_DIM)
+    writer = FakeWriter()
+
+    result = run_index(
+        str(repo), "proj-abcd1234", emb, writer,
+        head_sha="deadbeef", embed_dim=EMBED_DIM,
+    )
+
+    # 3 supported files (py, ts, cs); txt + bin skipped; .git pruned.
+    assert result.file_count == 3
+    assert result.skipped_count == 2
+    assert result.chunk_count > 3  # functions + class + method
+    langs = {l["language"] for l in result.languages}
+    assert langs == {"python", "typescript", "csharp"}
+    assert "proj-abcd1234" in writer.recreated  # full run recreates
+
+    # Chunk points carry the inspection + Phase 1.3 query contract.
+    pts = list(writer.collections["proj-abcd1234"].values())
+    sample = pts[0]
+    assert set(sample) >= {
+        "repo_id", "path", "language", "start_line", "end_line", "code"
+    }
+    assert all("/" in p["path"] or "." in p["path"] for p in pts)
+    # Embedder saw raw code (AD-10), one text per chunk.
+    assert len(emb.seen) == result.chunk_count
+
+
+def test_registry_roundtrip_is_readable_by_phase_1_1(tmp_path):
+    repo = _make_repo(tmp_path)
+    writer = FakeWriter()
+    result = run_index(
+        str(repo), "proj-abcd1234", FakeEmbedder(EMBED_DIM), writer,
+        head_sha="deadbeef", embed_dim=EMBED_DIM,
+    )
+
+    # Consume the indexer's registry write via the real read path.
+    reg = QdrantRegistry(client=writer.as_fake_client())
+
+    summaries = reg.list_repos()
+    assert [s.repo_id for s in summaries] == ["proj-abcd1234"]
+    assert summaries[0].indexed_sha == "deadbeef"
+
+    detail = reg.get_repo("proj-abcd1234")
+    assert detail is not None
+    assert detail.chunk_count == result.chunk_count
+    assert detail.file_count == 3
+    assert detail.skipped_count == 2
+
+    stats = Inspector(reg).stats("proj-abcd1234")
+    assert stats is not None
+    assert {l.language for l in stats.languages} == {
+        "python", "typescript", "csharp"
+    }
+    assert sum(l.chunks for l in stats.languages) == result.chunk_count
+
+
+def test_incremental_touches_only_changed_files(tmp_path):
+    repo = _make_repo(tmp_path)
+    writer = FakeWriter()
+    run_index(
+        str(repo), "r1", FakeEmbedder(EMBED_DIM), writer,
+        head_sha="sha1", embed_dim=EMBED_DIM,
+    )
+    before = dict(writer.collections["r1"])
+
+    # Edit one file, then reindex incrementally for just that path.
+    (repo / "lib.ts").write_text(
+        "export function add(a:number,b:number){return a+b;}\n"
+        "export function sub(a:number,b:number){return a-b;}\n"
+    )
+    writer.recreated.clear()
+    result = run_index(
+        str(repo), "r1", FakeEmbedder(EMBED_DIM), writer,
+        head_sha="sha2", changed_files=["lib.ts"], embed_dim=EMBED_DIM,
+    )
+
+    assert result.incremental is True
+    assert "r1" not in writer.recreated  # incremental never recreates
+
+    after = writer.collections["r1"]
+    # Python/C# chunks are untouched (same point ids survive).
+    py_before = {k for k, v in before.items() if v["language"] == "python"}
+    py_after = {k for k, v in after.items() if v["language"] == "python"}
+    assert py_before == py_after
+    # The edited TS file now contributes two functions.
+    ts_chunks = [v for v in after.values() if v["language"] == "typescript"]
+    assert len(ts_chunks) == 2
+
+
+def test_deleted_file_is_removed_on_incremental(tmp_path):
+    repo = _make_repo(tmp_path)
+    writer = FakeWriter()
+    run_index(
+        str(repo), "r1", FakeEmbedder(EMBED_DIM), writer,
+        head_sha="s1", embed_dim=EMBED_DIM,
+    )
+    assert any(
+        v["language"] == "typescript"
+        for v in writer.collections["r1"].values()
+    )
+
+    os.remove(repo / "lib.ts")
+    run_index(
+        str(repo), "r1", FakeEmbedder(EMBED_DIM), writer,
+        head_sha="s2", changed_files=["lib.ts"], embed_dim=EMBED_DIM,
+    )
+    assert not any(
+        v["language"] == "typescript"
+        for v in writer.collections["r1"].values()
+    )

@@ -139,24 +139,24 @@ _Deliverable: Running compose stack + ephemeral indexer that indexes any host re
 
 - **Pre-flight — ✅ CLEARED (B-1 resolved):** model+runtime proven (`nomic-embed-code` Q4_K_M via llama.cpp `--pooling last`, dim **3584**). `models.py` defines `EMBED_DIM = 3584` and the AD-10 prefix constants before any collection is created.
 - **What:** Standalone container image run per job (`docker run --rm`):
-  - Args: `--repo-id`, `--qdrant-url`, `--ollama-url`, optional `--changed-files` (incremental).
-  - Mounts `/repo:ro`; walks repo, tree-sitter chunk by function/class for **C#, Python, JavaScript, TypeScript** (AD-8), embed via shared Ollama, upsert to Qdrant collection `repo_id`, write/update repo metadata (indexed SHA, timestamp, per-language stats, skipped-file count).
+  - Args: `--repo-id`, `--qdrant-url`, `--embedder-url`, optional `--changed-files` (incremental).
+  - Mounts `/repo:ro`; walks repo, tree-sitter chunk by function/class for **C#, Python, JavaScript, TypeScript** (AD-8), embed via the shared embedder (llama.cpp), upsert to Qdrant collection `repo_id`, write/update repo metadata (indexed SHA, timestamp, per-language stats, skipped-file count).
   - Unsupported languages: skipped, not errored; counted in `skipped` so introspection (AD-9) shows what was ignored.
   - Windows path normalization handled host-side by `repo-id.ps1`; container sees a clean `/repo`.
 - **Owner:** Claude
-- **Dependencies:** 1.1 (schemas), 1.3 (Ollama service available)
+- **Dependencies:** 1.1 (schemas), 1.3 (embedder service available)
 - **Outputs:** `indexer/Dockerfile`, `indexer/index.py`, `indexer/chunker.py` (per-language tree-sitter rules: C#, Python, JavaScript, TypeScript), `indexer/embedder.py` — language set extensible by adding grammar + rules
 - **Validation:** `docker run` on a small test repo creates the Qdrant collection with chunk metadata + stored HEAD SHA; rerun with `--changed-files` updates only those
 
 #### Task 1.3: Query Logic (Qdrant + Ranking)
 
-- **What:** Embed query via shared Ollama, search the repo's Qdrant collection, return top-K (file, lines, code, score), formatted for Claude.
+- **What:** Embed query via the shared embedder, search the repo's Qdrant collection, return top-K (file, lines, code, score), formatted for Claude.
 - **Owner:** Claude
 - **Dependencies:** 1.1, 1.2
 - **Outputs:** `src/query_handler.py`, response schema in `models.py`
 - **Validation:** `/api/query/{repo_id}?q=...` returns sensibly ranked results on the test repo
 
-#### Task 1.4: docker-compose Stack (qdrant + ollama + api)
+#### Task 1.4: docker-compose Stack (qdrant + embedder + api)
 
 - **What:** `docker-compose.yml` with three long-running services, **no source mounts**:
   - `qdrant` (official image, named volume for `/data`), **`embedder`** = `ghcr.io/ggml-org/llama.cpp:server-cuda`, `--gpus all`, flags `--embeddings --pooling last`, model = vendored `nomic-embed-code` Q4_K_M GGUF in a named volume (pinned by SHA256, downloaded from `nomic-ai/nomic-embed-code-GGUF` — NOT via Ollama), `api` (slim Python image, port 8000).
@@ -165,7 +165,7 @@ _Deliverable: Running compose stack + ephemeral indexer that indexes any host re
 - **Owner:** Claude
 - **Dependencies:** 1.1–1.3
 - **Outputs:** `docker-compose.yml`, `api/Dockerfile`, `.dockerignore`, `.env.example`, `README_SETUP.md`
-- **Validation:** `docker compose up -d` reaches healthy; volumes persist across restart; indexer container can reach `qdrant` + `ollama` by service name
+- **Validation:** `docker compose up -d` reaches healthy; volumes persist across restart; indexer container can reach `qdrant` + `embedder` by service name
 
 ---
 
@@ -265,7 +265,7 @@ Each script: clear name, single responsibility, runnable standalone with documen
 ```
 Phase 1 (sequential):
   1.1 (API/Registry) → 1.2 (Indexer) → 1.3 (Query) → 1.4 (Compose stack)
-       (1.2 & 1.3 need ollama from 1.4's services; bring ollama+qdrant up early
+       (1.2 & 1.3 need the embedder from 1.4's services; bring embedder+qdrant up early
         as a dev sub-stack so 1.2/1.3 can be validated before full 1.4)
 
 Phase 2 (after Phase 1):
@@ -285,7 +285,7 @@ Phase 5: future
 | 1.1   | API up            | `/api/status` 200, `/api/repos` `[]` on fresh start           |
 | 1.2   | Indexer works     | `docker run` indexes C#/Py/JS/TS fixture; collection + SHA + per-lang stats + skipped count present |
 | 1.3   | Query works       | `/api/query/{repo_id}` returns ranked results                 |
-| 1.4   | Stack works       | `docker compose up -d` healthy; indexer reaches qdrant/ollama |
+| 1.4   | Stack works       | `docker compose up -d` healthy; indexer reaches qdrant/embedder |
 | 2.1   | Skill defined     | Commands appear; SKILL.md contains no logic                   |
 | 2.2   | Scripts standalone| Each script runs correctly invoked by hand with args          |
 | 2.3   | End-to-end        | `/vault-search` returns results; `/vault-inspect` shows correct counts/languages for the repo |
@@ -317,7 +317,7 @@ local_ai_code_vault/
 │   ├── Dockerfile               # ephemeral indexer image
 │   ├── index.py                 # entrypoint (args: repo-id, urls, changed-files)
 │   ├── chunker.py               # tree-sitter chunking (C#, Py, JS, TS)
-│   └── embedder.py              # Ollama embedding
+│   └── embedder.py              # embedder client (llama.cpp /v1/embeddings)
 │
 ├── scripts/                     # ALL skill logic (Option B, AD-4)
 │   ├── vault-health.ps1
