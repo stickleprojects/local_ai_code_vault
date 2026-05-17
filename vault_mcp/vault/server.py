@@ -89,7 +89,7 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
             "-Path",
             a.get("path", "."),
             *(["-Files"] if a.get("files") else []),
-            *(["-Language", a["language"]] if a.get("language") else []),
+            *(["-Language", a.get("language")] if a.get("language") else []),
             *_optional_arg(a, "offset", "-Offset"),
             *_optional_arg(a, "limit", "-Limit"),
         ],

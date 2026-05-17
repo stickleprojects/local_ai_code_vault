@@ -72,6 +72,7 @@ function Remove-JsonComments {
     $escaped = $false
     $inLineComment = $false
     $inBlockComment = $false
+    $backslashChar = '\'[0]
     for ($i = 0; $i -lt $Text.Length; $i++) {
         $ch = $Text[$i]
         $next = if ($i + 1 -lt $Text.Length) { $Text[$i + 1] } else { [char]0 }
@@ -105,7 +106,7 @@ function Remove-JsonComments {
         if ($inString) {
             if ($escaped) {
                 $escaped = $false
-            } elseif ($ch -eq '\') {
+            } elseif ($ch -eq $backslashChar) {
                 $escaped = $true
             } elseif ($ch -eq '"') {
                 $inString = $false
@@ -196,7 +197,7 @@ if ($Remove) {
     $env:VAULT_HOME = $null
     $settingsNotice = $null
     if ($writeMeta.rewritten) {
-        $settingsNotice = "settings.json was rewritten; backup saved to $($writeMeta.backup_path)"
+        $settingsNotice = "settings.json has been rewritten; backup saved to $($writeMeta.backup_path)"
     }
     Write-VaultResult ([ordered]@{
         removed = $true
@@ -226,9 +227,10 @@ Copy-Item -LiteralPath $instructionSource -Destination $instructionDest -Force
 if (-not $settingsObj.Contains($mcpSettingsKey) -or $settingsObj[$mcpSettingsKey] -isnot [hashtable]) {
     $settingsObj[$mcpSettingsKey] = [ordered]@{}
 }
+$combinedLaunchArgs = @($pythonLaunch.args + @($mcpServer))
 $settingsObj[$mcpSettingsKey]['vault'] = [ordered]@{
     command = $pythonLaunch.command
-    args    = @($pythonLaunch.args + @($mcpServer))
+    args    = $combinedLaunchArgs
     env     = [ordered]@{ VAULT_HOME = $cloneRoot }
 }
 if ($settingsObj.Contains($legacyMcpSettingsKey)) {
@@ -268,7 +270,7 @@ if ($null -eq $healthJson) {
 
 $settingsNotice = $null
 if ($writeMeta.rewritten) {
-    $settingsNotice = "settings.json was rewritten; backup saved to $($writeMeta.backup_path)"
+    $settingsNotice = "settings.json has been rewritten; backup saved to $($writeMeta.backup_path)"
 }
 Write-VaultResult ([ordered]@{
     installed = $true
