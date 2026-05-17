@@ -1,6 +1,7 @@
 import importlib
 import io
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -11,12 +12,11 @@ server = importlib.import_module("vault_mcp.vault.server")
 def test_script_command_uses_vault_home(monkeypatch):
     monkeypatch.setenv("VAULT_HOME", "/tmp/vault-home")
     cmd = server.script_command("vault-health.ps1", [])
-    assert cmd[:4] == [
-        "pwsh",
-        "-NoProfile",
-        "-File",
-        "/tmp/vault-home/scripts/vault-health.ps1",
-    ]
+    # Separator-agnostic: the impl emits OS-native paths (backslashes on
+    # Windows), so compare normalized Paths, not literal POSIX strings.
+    assert cmd[:3] == ["pwsh", "-NoProfile", "-File"]
+    assert len(cmd) == 4
+    assert Path(cmd[3]) == Path("/tmp/vault-home").resolve() / "scripts" / "vault-health.ps1"
 
 
 def test_run_tool_builds_expected_args(monkeypatch):
@@ -32,11 +32,14 @@ def test_run_tool_builds_expected_args(monkeypatch):
 
     assert code == 0
     assert payload["ok"] is True
+    # Script path is OS-native (str(Path)); rebuild it the same way so
+    # the assertion holds on Windows and POSIX alike.
+    expected_script = str(Path("/tmp/vault-home").resolve() / "scripts" / "index-repo.ps1")
     assert captured["command"] == [
         "pwsh",
         "-NoProfile",
         "-File",
-        "/tmp/vault-home/scripts/index-repo.ps1",
+        expected_script,
         "-Path",
         "/repo",
         "-Incremental",
