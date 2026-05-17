@@ -19,14 +19,24 @@ and phase plan are in [plan.md](plan.md).
 
 ## Usage
 
+**You clone this repo once.** Its `scripts/` and `SKILL.md` are **never
+copied into the repos you want to search** — the skill calls the central
+scripts by absolute path, and they take the target repo as an argument.
+
 1. **Start the stack:** `cp .env.example .env` then
    `docker compose up -d --build`. Full setup, GPU prerequisites, and
    validation steps: [README_SETUP.md](README_SETUP.md).
-2. **Open your repo** in Claude Code.
-3. **Index it:**
-   `pwsh -NoProfile -File scripts/index-repo.ps1 . -Build -Wait`
-   (or use the `/vault-index` skill command).
-4. **Search:** `/vault-search "<query>"`, or check state with
+2. **Install the skill (one-time, from this clone):**
+   `pwsh -NoProfile -File scripts/install-skill.ps1`, then restart
+   Claude Code. This places the skill in `~/.claude/skills/vault/` (so
+   `/vault-*` works in *any* repo) and records `VAULT_HOME` so it can
+   find the scripts. Re-run it if you move/update the clone;
+   `-Remove` uninstalls.
+3. **Open the repo you want to search** in Claude Code (any repo,
+   anywhere — it does not need this project's files).
+4. **Index it:** `/vault-index` (or, by hand from this clone,
+   `pwsh -NoProfile -File scripts/index-repo.ps1 <repo-path> -Build -Wait`).
+5. **Search:** `/vault-search "<query>"`, or check state with
    `/vault-status`, inspect what's indexed with `/vault-inspect`, and
    auto-reindex on commit with `/vault-hooks`.
 

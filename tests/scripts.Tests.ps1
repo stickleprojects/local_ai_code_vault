@@ -319,6 +319,28 @@ Describe 'install-git-hooks.ps1' {
     }
 }
 
+Describe 'install-skill.ps1' {
+    It 'installs the skill + records VAULT_HOME (temp root, no persist)' {
+        $root = Join-Path $TestDrive 'skills'
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist')
+        $r.Code | Should -Be 0
+        $r.Json.installed | Should -BeTrue
+        $dest = Join-Path $root 'vault' 'SKILL.md'
+        Test-Path $dest | Should -BeTrue
+        (Get-Content -Raw $dest) | Should -Match '\$env:VAULT_HOME'
+        Test-Path $r.Json.vault_home | Should -BeTrue   # points at a real clone
+    }
+
+    It '-Remove deletes the installed skill' {
+        $root = Join-Path $TestDrive 'skills2'
+        Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist') | Out-Null
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.removed | Should -BeTrue
+        Test-Path (Join-Path $root 'vault') | Should -BeFalse
+    }
+}
+
 Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLinux) {
     BeforeAll {
         $script:repo = New-TempGitRepo
