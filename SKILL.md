@@ -37,7 +37,7 @@ Full contracts: `$env:VAULT_HOME/scripts/README.md`.
 | Command | Script | Then |
 |---|---|---|
 | `/vault-status` | `vault-health.ps1`, then `vault-status.ps1 <path>` | Report reachable/registered/stale; if `stale`, say which/how many files changed and offer `/vault-index -Incremental`; if not registered, offer `/vault-index`. |
-| `/vault-index` | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]` | Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
+| `/vault-index` | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]` | **Run immediately — the explicit `/vault-index` invocation is the user's consent. Do NOT ask "want me to index?" and do NOT gate on a prior `/vault-status` check; indexing is non-destructive.** Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
 | `/vault-search <query>` | `query.ps1 "<query>" <path> [-Limit N]` | Format `results[]` as a readable list (path, line range, score, code). |
 | `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
 | `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
@@ -65,6 +65,11 @@ misleading "not registered".
 
 ## Notes
 
+- An explicit `/vault-*` command is itself the user's consent: act on
+  it directly, don't ask a yes/no confirmation first. "Offer
+  `/vault-index`" applies only to *other* commands hitting an
+  unregistered repo (`/vault-status`, or `code 5` from search) — never
+  to `/vault-index` itself.
 - `repo_id` is derived solely by `repo-id.ps1`; treat it as opaque.
 - `/vault-index` background jobs: poll `index-status.ps1` until
   `done:true`; completion is reported only within the open session
