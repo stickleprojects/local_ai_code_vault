@@ -1,5 +1,6 @@
 import importlib
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -18,7 +19,7 @@ def test_run_tool_builds_expected_args(monkeypatch):
 
     def fake_run(command, capture_output, text, check):
         captured["command"] = command
-        return type("P", (), {"stdout": '{"ok":true,"code":0}', "stderr": "", "returncode": 0})()
+        return SimpleNamespace(stdout='{"ok":true,"code":0}', stderr="", returncode=0)
 
     monkeypatch.setattr(server.subprocess, "run", fake_run)
     payload, code = server.run_tool("vault_index", {"path": "/repo", "incremental": True, "wait": True, "build": True})
@@ -48,7 +49,7 @@ def test_dispatch_tools_call_wraps_script_payload(monkeypatch):
     monkeypatch.setenv("VAULT_HOME", "/tmp/vault-home")
 
     def fake_run(command, capture_output, text, check):
-        return type("P", (), {"stdout": '{"ok":false,"code":5,"error":"not indexed"}', "stderr": "", "returncode": 5})()
+        return SimpleNamespace(stdout='{"ok":false,"code":5,"error":"not indexed"}', stderr="", returncode=5)
 
     monkeypatch.setattr(server.subprocess, "run", fake_run)
     result = server._dispatch("tools/call", {"name": "vault_status", "arguments": {"path": "/repo"}})

@@ -7,6 +7,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+
+def _optional_arg(arguments: dict[str, Any], key: str, flag: str) -> list[str]:
+    if key in arguments and arguments[key] is not None:
+        return [flag, str(arguments[key])]
+    return []
+
 TOOL_DEFS: dict[str, dict[str, Any]] = {
     "vault_health": {
         "description": "Run scripts/vault-health.ps1 to check stack reachability.",
@@ -62,7 +68,7 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
             a["query"],
             "-Path",
             a.get("path", "."),
-            *(["-Limit", str(a["limit"])] if "limit" in a and a["limit"] is not None else []),
+            *_optional_arg(a, "limit", "-Limit"),
         ],
     },
     "vault_inspect": {
@@ -84,8 +90,8 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
             a.get("path", "."),
             *(["-Files"] if a.get("files") else []),
             *(["-Language", a["language"]] if a.get("language") else []),
-            *(["-Offset", str(a["offset"])] if "offset" in a and a["offset"] is not None else []),
-            *(["-Limit", str(a["limit"])] if "limit" in a and a["limit"] is not None else []),
+            *_optional_arg(a, "offset", "-Offset"),
+            *_optional_arg(a, "limit", "-Limit"),
         ],
     },
     "vault_hooks": {
