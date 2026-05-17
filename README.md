@@ -89,5 +89,6 @@ Validation checklist:
 
 ## Status
 
-Phases 1 (stack, indexer, query) and 2 (skill + scripts) complete.
-Phase 3 (testing & validation) next — see [plan.md](plan.md).
+Phases 1 (stack, indexer, query), 2 (skill + scripts), and 3 (testing,
+validation & docs) complete. Phase 4.2 (CHANGELOG + release tagging)
+done; 4.1/4.3 (image publishing) deferred — see [plan.md](plan.md).

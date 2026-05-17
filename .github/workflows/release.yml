@@ -1,0 +1,58 @@
+name: Release
+
+# Phase 4.2 (lightweight): an annotated tag `vX.Y.Z` publishes a GitHub
+# Release whose body is the matching CHANGELOG.md section. No container
+# images are pushed (Phase 4.1 deferred — see plan.md), so this needs no
+# managed secret: the built-in GITHUB_TOKEN covers release creation.
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: github release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Derive version
+        id: ver
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Guard — pyproject version matches tag
+        run: |
+          proj="$(grep -m1 '^version' pyproject.toml | sed -E 's/.*"(.*)".*/\1/')"
+          if [ "$proj" != "${{ steps.ver.outputs.version }}" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} != pyproject version ${proj}"
+            exit 1
+          fi
+
+      - name: Extract CHANGELOG section
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          # Lines between this version's heading and the next "## "
+          # heading. Written to a file (never interpolated into a shell
+          # command) so CHANGELOG content cannot inject code.
+          awk -v v="$VERSION" '
+            index($0, "## [" v "]") == 1 {grab=1; next}
+            grab && index($0, "## ") == 1 {exit}
+            grab {print}
+          ' CHANGELOG.md > release-notes.md
+          if [ ! -s release-notes.md ] || ! grep -q '[^[:space:]]' release-notes.md; then
+            echo "::error::no CHANGELOG.md section for [$VERSION]"
+            exit 1
+          fi
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file release-notes.md

@@ -258,31 +258,47 @@ Each script: clear name, single responsibility, runnable standalone with documen
 - Multi-project: index 2+ repos in different host locations, switch between them, verify isolation by `repo_id`. Stale detection after a commit. Git-hook auto-reindex. Background completion reporting. `/vault-inspect` reports correct per-language counts on a mixed C#/Py/JS/TS repo and lists skipped files.
 - **Owner:** User (Kieron) — ~30 min
 
-#### Task 3.3: Documentation
+#### Task 3.3: Documentation — **DONE (2026-05-17)**
 
-- `docs/SETUP.md`, `docs/TROUBLESHOOTING.md`, `docs/EXAMPLES.md`, `scripts/README.md` (script arg/JSON contracts), `docs/ARCHITECTURE.md`.
+- `docs/SETUP.md`, `docs/TROUBLESHOOTING.md`, `docs/EXAMPLES.md`, `docs/ARCHITECTURE.md` written (synthesize, don't duplicate — they cross-link `README_SETUP.md` for the GPU stack and `scripts/README.md` for I/O contracts, both of which already existed). README gains a Documentation index.
 - **Owner:** Claude
 
 ---
 
 ### **PHASE 4: CI/CD & Publishing (GitHub Agents)**
 
-#### Task 4.1: GitHub Actions — Build & Push
+#### Task 4.1: GitHub Actions — Build & Push — **DEFERRED (2026-05-17)**
 
-- Build + push both images (`api`, `indexer`) to GHCR on push to `main` / dispatch; run smoke tests first; tag `latest`.
-- **Owner:** GitHub Agent (Claude guidance)
-- **Outputs:** `.github/workflows/build-and-push.yml`
+- _Original:_ build + push both images (`api`, `indexer`) to GHCR on
+  push to `main` / dispatch; smoke first; tag `latest`.
+- **Deferred — rationale:** this is a single-user, single-machine local
+  tool. Both images already build locally (`docker compose up -d
+  --build`; `index-repo.ps1 -Build` → `vault-indexer:local`) and Docker
+  caches the layers. GHCR publishing only adds value with multiple
+  machines, external consumers, or a need for frozen reproducible
+  artifacts — none of which apply today. Same "single user; defer"
+  reasoning as Phase 5.2/5.3. Revisit if any of those conditions change
+  (note: `indexer/Dockerfile` uses a floating `python:3.12-slim` base,
+  so reproducibility is the most likely trigger).
+- **Outputs (when revived):** `.github/workflows/build-and-push.yml`
 
-#### Task 4.2: Semantic Versioning & Tagging
+#### Task 4.2: Semantic Versioning & Tagging — **lightweight scope**
 
-- Tag-triggered release, `CHANGELOG.md`, both images tagged with version.
-- **Owner:** GitHub Agent
-- **Outputs:** `.github/workflows/release.yml`, `CHANGELOG.md`
+- Rescoped to the part with standalone value and no secrets/registry
+  dependency (4.1 deferred): `CHANGELOG.md` (Keep a Changelog) +
+  documented SemVer `vMAJOR.MINOR.PATCH` git-tag convention +
+  tag-triggered **GitHub Release** workflow (built-in `GITHUB_TOKEN`,
+  no image push, no `GHCR_TOKEN`). Image-version tagging drops with 4.1.
+- **Owner:** Claude
+- **Outputs:** `CHANGELOG.md`, `.github/workflows/release.yml`
 
-#### Task 4.3: GitHub Secrets & Security
+#### Task 4.3: GitHub Secrets & Security — **DEFERRED (2026-05-17)**
 
-- `GHCR_TOKEN`, rotation docs, no secrets in logs.
-- **Owner:** GitHub Agent (Claude oversight)
+- _Original:_ `GHCR_TOKEN`, rotation docs, no secrets in logs.
+- **Deferred — rationale:** exists only to serve 4.1's GHCR push;
+  deferred with it. The lightweight 4.2 release workflow uses the
+  built-in `GITHUB_TOKEN`, so no managed secret is introduced. Revive
+  alongside 4.1.
 
 ---
 
@@ -307,7 +323,7 @@ Phase 2 (after Phase 1):
   2.1 (Host scripts + error handling) → 2.2 (SKILL.md, thin, last)
 
 Phase 3: 3.1 (CI tests) ‖ 3.2 (manual) → 3.3 (docs)
-Phase 4: 4.1 → 4.2 → 4.3
+Phase 4: 4.2 (lightweight, standalone)   [4.1, 4.3 deferred — see Phase 4]
 Phase 5: future
 ```
 
@@ -399,7 +415,7 @@ local_ai_code_vault/
 | 1     | 1.1–1.4  | High (core)          | ~3–4 sessions (Claude)             |
 | 2     | 2.1–2.3  | Medium (skill+scripts)| ~2 sessions (Claude)              |
 | 3     | 3.1–3.3  | Medium               | ~1–2 sessions (Claude + user)      |
-| 4     | 4.1–4.3  | Medium (CI/CD)       | ~1 session (GitHub Agent + Claude) |
+| 4     | 4.2 only | Low (4.1/4.3 deferred)| ~0.5 session (Claude)             |
 | 5     | Optional | Varies               | Future                             |
 
 **Total: ~7–9 sessions for Phases 1–4**
