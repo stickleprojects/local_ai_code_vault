@@ -32,3 +32,26 @@ jobs:
       - name: Run tests
         # -v lists each test name; -ra summarises non-pass outcomes.
         run: pytest -v -ra
+
+  pester:
+    name: pester (host scripts)
+    runs-on: ubuntu-latest
+    # pwsh + git are preinstalled on the runner; the suite fakes docker
+    # via a PATH shim and the API via an in-process listener, so this
+    # needs no Docker stack / GPU (Phase 3, Option B).
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Pester 5
+        shell: pwsh
+        run: Install-Module Pester -MinimumVersion 5.5.0 -Force -Scope CurrentUser -SkipPublisherCheck
+
+      - name: Run Pester
+        shell: pwsh
+        run: |
+          Import-Module Pester -MinimumVersion 5.5.0
+          $c = New-PesterConfiguration
+          $c.Run.Path = 'tests/scripts.Tests.ps1'
+          $c.Run.Exit = $true
+          $c.Output.Verbosity = 'Detailed'
+          Invoke-Pester -Configuration $c

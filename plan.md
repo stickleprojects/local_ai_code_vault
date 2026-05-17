@@ -222,11 +222,36 @@ Each script: clear name, single responsibility, runnable standalone with documen
 
 ### **PHASE 3: Testing & Validation**
 
+> **Resolved 2026-05-17 — CI-vs-PowerShell (Option B chosen):** the CI
+> runner is Linux + `pytest`, with no Docker stack/GPU. Script logic
+> splits into *pure* (repo_id contract, exit-code/JSON emitter, arg
+> validation, hook-file generation — mockable, no stack) vs
+> *integration* (real index/query — needs the GPU stack). Decision:
+> automate the pure half with **Pester** in a **second CI job** running
+> `pwsh` on the free Linux runner (git/docker/HTTP mocked); keep the
+> end-to-end `smoke_test.ps1` as a **documented manual gate** (a
+> self-hosted GPU runner to automate it is disproportionate and only
+> re-proves the already-closed B-1 path). Note: the Python unit/
+> integration tests below were already written alongside Phases 1.1–1.3
+> (ahead of plan); Task 3.1 is therefore mostly the Pester job + manual
+> smoke doc.
+
 #### Task 3.1: Smoke Test Suite
 
-- Unit: repo_id derivation, chunking, query parsing. Integration: API endpoints. E2E: `compose up` → `index-repo.ps1` on fixture → query → verify. Plus per-script tests (each host script invoked directly with fixtures).
+- Python unit/integration: **already delivered** in Phases 1.1–1.3 —
+  `tests/test_models.py`, `test_chunker.py`, `test_embedder.py`,
+  `test_indexer.py`, `test_query_handler.py`, `test_api.py` (28 tests,
+  in-memory fakes, the existing required CI gate).
+- New: **`tests/scripts.Tests.ps1`** — Pester tests for the pure script
+  logic (repo_id/AD-2 contract first, exit codes, JSON shape, hook
+  file), `git`/`docker`/`Invoke-WebRequest` mocked.
+- New: **`.github/workflows/ci.yml`** gains a `pester` job (`pwsh` on
+  `ubuntu-latest`, no GPU) run alongside `pytest`.
+- **`tests/smoke_test.ps1`** — true E2E (`compose up` → `index-repo.ps1`
+  on a fixture → query → verify); **manual gate**, documented, not in
+  CI. (The live end-to-end run was already exercised by hand in Phase 2.)
 - **Owner:** Claude + GitHub Actions (CI)
-- **Outputs:** `tests/test_registry.py`, `tests/test_indexer.py`, `tests/test_query.py`, `tests/test_api.py`, `tests/test_scripts.ps1`, `tests/smoke_test.ps1`
+- **Outputs:** `tests/scripts.Tests.ps1`, `tests/smoke_test.ps1`, updated `.github/workflows/ci.yml`
 
 #### Task 3.2: Manual Testing on Windows + Docker Desktop
 
