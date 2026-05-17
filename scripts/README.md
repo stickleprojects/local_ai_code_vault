@@ -77,7 +77,7 @@ Exit 4 if the stack is down. No repo context needed.
 changed_files[]}`. `changed_files` is `null` when undeterminable (e.g.
 indexed SHA not in local history), `[]` when not stale.
 
-### `index-repo.ps1 [Path] [-Incremental] [-Wait] [-Build]`
+### `index-repo.ps1 [Path] [-Incremental] [-Wait] [-Build] [-Rebuild]`
 Option-B launcher: `docker run` of the indexer image, repo bind-mounted
 read-only at `/repo`, joined to `VAULT_NETWORK`. `repo_id` is resolved
 here and passed explicitly (never recomputed in the container).
@@ -89,7 +89,11 @@ here and passed explicitly (never recomputed in the container).
 - `-Incremental`: reindex only files changed since the indexed SHA
   (via `vault-status.ps1`); if up to date → `{skipped:true, reason}`;
   if not registered → falls back to a full index.
-- `-Build`: build the indexer image first if missing.
+- `-Build`: build the indexer image first **if missing** (no-op when
+  one already exists — stale images persist; use `-Rebuild`).
+- `-Rebuild`: force `docker build` of the indexer image **even if it
+  exists**. Required to pick up `indexer/` code changes; without it an
+  old image keeps running silently.
 
 ### `index-status.ps1 <ContainerId> [-Keep]`
 → `{container_id, state, exit_code, done}`. Reaps the container once

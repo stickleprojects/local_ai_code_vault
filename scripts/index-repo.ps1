@@ -23,13 +23,18 @@
 .PARAMETER Incremental Only changed-since-indexed files.
 .PARAMETER Wait        Block and stream until the indexer exits.
 .PARAMETER Build       Build the indexer image if it is missing.
+.PARAMETER Rebuild     Force a rebuild of the indexer image even if it
+                       already exists. Use after pulling indexer code
+                       changes — `-Build` alone is a no-op once an image
+                       exists, so a stale image would otherwise persist.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Position = 0)][string]$Path = '.',
     [switch]$Incremental,
     [switch]$Wait,
-    [switch]$Build
+    [switch]$Build,
+    [switch]$Rebuild
 )
 
 . "$PSScriptRoot/_common.ps1"
@@ -42,22 +47,31 @@ if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     Stop-VaultWithError "docker not found on PATH — required to run the indexer" $VaultExit.Docker
 }
 
-# Image present? Build on request, else fail with the exact command.
+function Build-IndexerImage {
+    Write-VaultLog "building $($cfg.IndexerImage) ..."
+    $repoTop = (Resolve-Path -LiteralPath "$PSScriptRoot/..").Path
+    # Build chatter -> stderr so stdout stays a single JSON object.
+    & docker build -t $cfg.IndexerImage -f "$repoTop/indexer/Dockerfile" $repoTop 2>&1 |
+        ForEach-Object { [Console]::Error.WriteLine($_) }
+    if ($LASTEXITCODE -ne 0) {
+        Stop-VaultWithError "indexer image build failed" $VaultExit.Docker
+    }
+}
+
+# -Rebuild forces a fresh image (picks up indexer code changes); -Build
+# only covers the missing case. Without either, a missing image is a
+# hard error with the exact command.
 & docker image inspect $cfg.IndexerImage *> $null
-if ($LASTEXITCODE -ne 0) {
+$imagePresent = ($LASTEXITCODE -eq 0)
+if ($Rebuild) {
+    Build-IndexerImage
+} elseif (-not $imagePresent) {
     if ($Build) {
-        Write-VaultLog "building $($cfg.IndexerImage) ..."
-        $repoTop = (Resolve-Path -LiteralPath "$PSScriptRoot/..").Path
-        # Build chatter -> stderr so stdout stays a single JSON object.
-        & docker build -t $cfg.IndexerImage -f "$repoTop/indexer/Dockerfile" $repoTop 2>&1 |
-            ForEach-Object { [Console]::Error.WriteLine($_) }
-        if ($LASTEXITCODE -ne 0) {
-            Stop-VaultWithError "indexer image build failed" $VaultExit.Docker
-        }
+        Build-IndexerImage
     } else {
         Stop-VaultWithError ("indexer image '$($cfg.IndexerImage)' not found. " +
             "Build it: docker build -t $($cfg.IndexerImage) -f indexer/Dockerfile . " +
-            "(or re-run with -Build)") $VaultExit.Docker
+            "(or re-run with -Build, or -Rebuild to force)") $VaultExit.Docker
     }
 }
 
