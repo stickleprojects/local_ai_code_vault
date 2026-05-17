@@ -1,0 +1,1 @@
+# Vault MCP adapter package.

@@ -26,7 +26,7 @@ scripts by absolute path, and they take the target repo as an argument.
 1. **Start the stack:** `cp .env.example .env` then
    `docker compose up -d --build`. Full setup, GPU prerequisites, and
    validation steps: [README_SETUP.md](README_SETUP.md).
-2. **Install the skill (one-time, from this clone):**
+2. **Install Claude skill (one-time, from this clone):**
    `pwsh -NoProfile -File scripts/install-skill.ps1`, then restart
    Claude Code. This places the skill in `~/.claude/skills/vault/` (so
    `/vault-*` works in *any* repo) and records `VAULT_HOME` so it can
@@ -43,17 +43,38 @@ scripts by absolute path, and they take the target repo as an argument.
 The skill is pure delegation; all logic is in standalone, individually
 runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
-## Documentation
+## Shared Claude + Copilot architecture
 
-- [docs/SETUP.md](docs/SETUP.md) — zero-to-first-search walkthrough.
-- [docs/EXAMPLES.md](docs/EXAMPLES.md) — concrete command + script usage.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — diagnose by exit
-  code / symptom.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the parts fit; the
-  three sacred contracts.
-- [scripts/README.md](scripts/README.md) — script I/O contracts.
-- [plan.md](plan.md) — authoritative design (`AD-*`, phases).
-- [CHANGELOG.md](CHANGELOG.md) — release history & versioning convention.
+Claude and Copilot intentionally reuse the same runtime contracts:
+
+- **One script layer (`scripts/*.ps1`)** is the only place where vault
+  business logic lives.
+- **Claude skill (`SKILL.md`)** delegates `/vault-*` commands to those
+  scripts.
+- **Copilot MCP adapter (`vault_mcp/vault/server.py`)** delegates MCP tools to
+  the same scripts.
+
+This keeps behavior aligned across both clients and avoids duplicated
+implementation paths.
+
+## Copilot global setup (MCP, no per-repo config)
+
+Copilot can use the same host scripts via a thin MCP adapter, installed
+once at user scope (no repo-local Copilot files required):
+
+1. `pwsh -NoProfile -File scripts/install-copilot.ps1`
+2. Restart VS Code/Copilot.
+3. In any repo, ask Copilot to run `vault_index` (or run
+   `pwsh -NoProfile -File scripts/index-repo.ps1 <repo-path>` manually).
+4. Use `vault_search`, `vault_status`, `vault_inspect`, `vault_hooks`.
+
+Validation checklist:
+- [ ] `install-copilot.ps1` reports `installed:true` and shows a
+      `settings_path`.
+- [ ] In a new repo, Copilot can call `vault_index`/`vault_status`
+      without adding repo files.
+- [ ] If a repo is unregistered (`code:5`), Copilot offers indexing.
+- [ ] Existing Claude `/vault-*` flow still works unchanged.
 
 ## Development
 

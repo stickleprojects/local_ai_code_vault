@@ -123,6 +123,14 @@ environment unless `-NoPersist`; on non-Windows it sets the process var
 and prints the profile line to add). Re-run after moving/updating the
 clone; `-Remove` uninstalls. Restart Claude Code afterwards.
 
+### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
+One-time user-scope Copilot setup (no per-repo config): records
+`VAULT_HOME`, registers MCP server `vault_mcp/vault/server.py` under VS
+Code user settings (`mcp.servers.vault`), installs global instruction
+asset (`copilot/instructions/vault-global.instructions.md`), and runs a
+post-install `vault-health.ps1` check. `-Remove` unregisters MCP +
+instruction entry and deletes the installed instruction file.
+
 ## Prerequisites
 
 - The stack is up (`docker compose up -d`; see `README_SETUP.md`).
