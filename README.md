@@ -35,8 +35,11 @@ runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
 ## Development
 
-- Tests: `pytest` (in-memory fakes, no services needed). CI runs
-  `pytest -v` on PRs to `main`.
+- Tests: `pytest` (Python, in-memory fakes) and `tests/scripts.Tests.ps1`
+  (Pester, host-script logic — fakes git/docker/API, no stack needed).
+  Both run in CI on PRs to `main`. The live end-to-end check is the
+  manual gate `pwsh -NoProfile -File tests/smoke_test.ps1` (needs the
+  running stack; not in CI).
 - Contributing: never commit to `main` — feature branch → PR → merge;
   keep CI green. See [CLAUDE.md](CLAUDE.md) for architecture and
   conventions.
