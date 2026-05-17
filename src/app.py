@@ -10,28 +10,42 @@ reports `qdrant_connected: false` instead, and `/api/repos` returns `[]`.
 
 from __future__ import annotations
 
+import os
+
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from .inspection import Inspector
 from .models import (
     ErrorResponse,
     FilesResponse,
+    QueryResponse,
     RepoDetail,
     RepoStats,
     RepoSummary,
     StatusResponse,
 )
+from .query_handler import HttpQueryEmbedder, QueryHandler
 from .registry import QdrantRegistry
 
 _NOT_FOUND = {404: {"model": ErrorResponse}}
 
 
-def create_app(registry=None) -> FastAPI:
+def create_app(registry=None, query_embedder=None) -> FastAPI:
     app = FastAPI(title="local_ai_code_vault API", version="0.1.0")
     app.state.registry = registry if registry is not None else QdrantRegistry()
+    app.state.query_embedder = (
+        query_embedder
+        if query_embedder is not None
+        else HttpQueryEmbedder(
+            os.environ.get("EMBEDDER_URL", "http://embedder:8080")
+        )
+    )
 
     def get_registry():
         return app.state.registry
+
+    def get_query_handler() -> QueryHandler:
+        return QueryHandler(app.state.registry, app.state.query_embedder)
 
     @app.get("/api/status", response_model=StatusResponse)
     def status(reg=Depends(get_registry)) -> StatusResponse:
@@ -73,10 +87,21 @@ def create_app(registry=None) -> FastAPI:
             raise HTTPException(404, f"repo '{repo_id}' is not registered")
         return result
 
-    @app.get("/api/query/{repo_id}")
-    def query(repo_id: str, q: str = Query(..., min_length=1)):
-        # Semantic search is Phase 1.3 (needs the embedder + indexed data).
-        raise HTTPException(501, "semantic search is not implemented until Phase 1.3")
+    @app.get(
+        "/api/query/{repo_id}",
+        response_model=QueryResponse,
+        responses=_NOT_FOUND,
+    )
+    def query(
+        repo_id: str,
+        q: str = Query(..., min_length=1),
+        limit: int = Query(10, ge=1, le=50),
+        handler: QueryHandler = Depends(get_query_handler),
+    ):
+        result = handler.query(repo_id, q, limit)
+        if result is None:
+            raise HTTPException(404, f"repo '{repo_id}' is not registered")
+        return result
 
     return app
 
