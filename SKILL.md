@@ -1,0 +1,62 @@
+---
+name: vault
+description: >-
+  Semantic code search over the local AI code vault. Use when the user
+  invokes /vault-status, /vault-index, /vault-search, /vault-inspect, or
+  /vault-hooks, or asks to index / semantically search / check indexing
+  status of the current repository against the local vault stack.
+---
+
+# Vault skill (thin delegation — AD-4)
+
+**All logic lives in `scripts/*.ps1`.** This skill ONLY: picks the
+script for the command, runs it, parses its stdout JSON, and reports.
+Do not reimplement script behaviour, recompute `repo_id`, or call the
+API/Docker directly — always go through the scripts.
+
+Run scripts from the repo root the user is working in:
+
+```
+pwsh -NoProfile -File scripts/<name>.ps1 <Path> [-Switches]
+```
+
+Every script prints **one JSON object** on stdout (`ok`, `code`, plus
+fields) and uses stable exit codes. Parse stdout regardless of success.
+Full contracts: [scripts/README.md](scripts/README.md).
+
+## Commands
+
+| Command | Script | Then |
+|---|---|---|
+| `/vault-status` | `vault-health.ps1`, then `vault-status.ps1 <path>` | Report reachable/registered/stale; if `stale`, say which/how many files changed and offer `/vault-index -Incremental`; if not registered, offer `/vault-index`. |
+| `/vault-index` | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]` | Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
+| `/vault-search <query>` | `query.ps1 "<query>" <path> [-Limit N]` | Format `results[]` as a readable list (path, line range, score, code). |
+| `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
+| `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
+
+## Handling outcomes (surface, don't reimplement)
+
+The scripts already produce actionable messages and consistent exit
+codes. Read `code` from the JSON and act:
+
+- `0` — success. Format the result for the user.
+- `4` StackDown — the stack isn't up. Tell the user to run
+  `docker compose up -d` (see `README_SETUP.md`); don't retry blindly.
+- `5` NotRegistered — offer to run `/vault-index`.
+- `3` NotGitRepo — explain the command must run inside a git repo.
+- `6` Docker — surface the script's message (often: build the indexer
+  image with `index-repo.ps1 -Build`, or `docker logs` the container).
+- `2` / `7` — show the error; it states what to fix.
+
+For `/vault-status`, always run `vault-health.ps1` first — if the stack
+is down, stop there with the restart guidance rather than reporting a
+misleading "not registered".
+
+## Notes
+
+- `repo_id` is derived solely by `repo-id.ps1`; treat it as opaque.
+- `/vault-index` background jobs: poll `index-status.ps1` until
+  `done:true`; completion is reported only within the open session
+  (documented limitation — no detached OS notification).
+- This skill performs no destructive action except `/vault-hooks
+  -Remove` (removes only vault-managed hooks).

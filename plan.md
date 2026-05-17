@@ -173,40 +173,50 @@ _Deliverable: Running compose stack + ephemeral indexer that indexes any host re
 
 _Deliverable: `/vault-*` skill that delegates to named, individually-debuggable scripts (AD-4)._
 
-#### Task 2.1: SKILL.md Definition
+> **Sequencing (revised 2026-05-17 — supersedes original 2.1→2.2→2.3):**
+> Build the **scripts (with error handling intrinsic) first, then write
+> SKILL.md last** against their frozen contracts. Rationale: AD-4 makes
+> SKILL.md *pure delegation* — its entire content is a function of the
+> scripts' final arg/JSON/exit-code contracts, and error handling lives
+> *inside* the scripts (consistent exit codes), not the skill. Writing
+> the skill first means writing it against contracts that don't exist
+> yet and rewriting it twice as the scripts and their error handling
+> settle. The command surface itself was already designed at planning
+> time (enumerated in Task 2.2 below), so nothing is lost by writing the
+> file last. Error handling is therefore folded into the script task
+> (former Task 2.3 is not a separate pass — bolting it on later produces
+> inconsistent handling). One Phase 2 PR: SKILL.md is tiny and
+> meaningless without the scripts.
 
-- **What:** Commands only, each mapping to one script:
-  - `/vault-status` → check stack + registration + freshness
-  - `/vault-index` → index/reindex current repo
-  - `/vault-search <query>` → semantic search current repo
-  - `/vault-inspect` → show what's indexed for current repo (counts, per-language breakdown, skipped files, file inventory) — AD-9, read-only
-  - `/vault-hooks` → install/remove git hooks
-- **Owner:** Claude
-- **Outputs:** `SKILL.md`
-- **Validation:** commands recognized in Claude UI; SKILL.md contains no logic, only delegation
+#### Task 2.1: Host Scripts + Error Handling (all logic lives here)
 
-#### Task 2.2: Host Scripts (all logic lives here)
+Each script: clear name, single responsibility, runnable standalone with documented args, explicit exit codes, `--verbose` logging to stderr, machine-readable (JSON) stdout for the skill to parse. Error handling is written **with** each script, not after.
 
-Each script: clear name, single responsibility, runnable standalone with documented args, explicit exit codes, `--verbose` logging to stderr, machine-readable (JSON) stdout for the skill to parse.
-
+- `scripts/repo-id.ps1 <path>` — print canonical repo_id (the AD-2/contract source of truth). **Build first** — every other script resolves repo_id through it.
 - `scripts/vault-health.ps1` — stack reachable? `/api/status` 200. Exit 0/!=0.
-- `scripts/repo-id.ps1 <path>` — print canonical repo_id (the AD-2/contract source of truth).
 - `scripts/vault-status.ps1 <path>` — registered? returns `{registered, indexed_sha, indexed_at, head_sha, stale, changed_files[]}`.
 - `scripts/index-repo.ps1 <path> [--incremental] [--wait]` — Option B launcher: `docker run --rm --network <stack>_default -v <hostpath>:/repo:ro indexer ...`. Prints `{job_id|container_id}`. `--wait` blocks and streams progress.
 - `scripts/index-status.ps1 <container_id>` — `docker wait`/`docker inspect` → `{state, exit_code, done}`.
 - `scripts/query.ps1 <path> <query>` — resolve repo_id, call `/api/query`, return formatted results.
 - `scripts/vault-inspect.ps1 <path> [--files] [--language <lang>]` — resolve repo_id, call `/api/repos/{repo_id}/stats` (and `/files` with `--files`); returns indexed SHA/time, file + chunk counts, per-language breakdown, skipped count, optional file inventory. Read-only (AD-9).
 - `scripts/install-git-hooks.ps1 <path> [--remove]` — writes a minimal POSIX `post-commit`/`post-merge` hook (git runs hooks via bundled `sh` on Windows) that fires `index-repo` non-blocking; hook degrades gracefully if the stack is down.
+- **Error handling & fallbacks (intrinsic to each script, consistent exit codes — never in the skill):** stack down → restart instructions; repo not registered → offer `/vault-index`; not a git repo → explain; indexer non-zero exit → surface `docker logs`; VRAM/queue busy → retry guidance.
 - **Owner:** Claude
-- **Dependencies:** 2.1, Phase 1 complete
-- **Validation:** every script runs correctly when invoked **by hand** with args, independent of the skill; JSON contracts documented in `scripts/README.md`
+- **Dependencies:** Phase 1 complete
+- **Validation:** every script runs correctly when invoked **by hand** with args, independent of the skill; each error scenario produces a clear, actionable message via a consistent exit code; JSON contracts documented in `scripts/README.md`
 
-#### Task 2.3: Error Handling & Fallbacks
+#### Task 2.2: SKILL.md Definition (thin delegation — written last, against frozen contracts)
 
-- **What:** Stack down → restart instructions; repo not registered → offer `/vault-index`; not a git repo → explain; indexer non-zero exit → surface `docker logs`; VRAM/queue busy → retry guidance.
+- **What:** Commands only, each mapping to one script (the command surface is fixed here at planning time; the file is written against the now-frozen `scripts/README.md` JSON contracts):
+  - `/vault-status` → check stack + registration + freshness
+  - `/vault-index` → index/reindex current repo
+  - `/vault-search <query>` → semantic search current repo
+  - `/vault-inspect` → show what's indexed for current repo (counts, per-language breakdown, skipped files, file inventory) — AD-9, read-only
+  - `/vault-hooks` → install/remove git hooks
 - **Owner:** Claude
-- **Dependencies:** 2.1, 2.2
-- **Validation:** each scenario produces a clear, actionable message; errors handled inside scripts (consistent exit codes), not in the skill
+- **Dependencies:** 2.1 complete (script contracts frozen)
+- **Outputs:** `SKILL.md`
+- **Validation:** commands recognized in Claude UI; SKILL.md contains no logic, only delegation
 
 ---
 
@@ -269,7 +279,7 @@ Phase 1 (sequential):
         as a dev sub-stack so 1.2/1.3 can be validated before full 1.4)
 
 Phase 2 (after Phase 1):
-  2.1 (SKILL.md) → 2.2 (Host scripts) → 2.3 (Error handling)
+  2.1 (Host scripts + error handling) → 2.2 (SKILL.md, thin, last)
 
 Phase 3: 3.1 (CI tests) ‖ 3.2 (manual) → 3.3 (docs)
 Phase 4: 4.1 → 4.2 → 4.3
@@ -286,9 +296,9 @@ Phase 5: future
 | 1.2   | Indexer works     | `docker run` indexes C#/Py/JS/TS fixture; collection + SHA + per-lang stats + skipped count present |
 | 1.3   | Query works       | `/api/query/{repo_id}` returns ranked results                 |
 | 1.4   | Stack works       | `docker compose up -d` healthy; indexer reaches qdrant/embedder |
-| 2.1   | Skill defined     | Commands appear; SKILL.md contains no logic                   |
-| 2.2   | Scripts standalone| Each script runs correctly invoked by hand with args          |
-| 2.3   | End-to-end        | `/vault-search` returns results; `/vault-inspect` shows correct counts/languages for the repo |
+| 2.1   | Scripts standalone| Each script runs correctly invoked by hand with args; each error scenario gives a clear message + consistent exit code |
+| 2.2   | Skill defined     | Commands appear; SKILL.md contains no logic, only delegation   |
+| 2.E   | End-to-end        | `/vault-search` returns results; `/vault-inspect` shows correct counts/languages for the repo |
 | 3.1   | Tests pass        | Unit/integration/E2E + per-script tests green                 |
 | 3.2   | Manual multi-proj | 2+ repos isolated by repo_id; stale detect + hooks work       |
 | 3.3   | Docs complete     | Script contracts documented; new user can follow setup        |
@@ -383,5 +393,5 @@ local_ai_code_vault/
 
 ---
 
-**Created:** 2026-05-16 · **Revised:** 2026-05-16 (decomposed stack, ephemeral indexer, Option B, script-based skill, languages C#/Py/JS/TS, introspection first-class; **B-1 RESOLVED**: nomic-embed-code Q4_K_M via llama.cpp `--pooling last`, dim 3584)
-**Status:** ✅ Ready for Phase 1.1 (B-1 closed; embedding stack proven end-to-end).
+**Created:** 2026-05-16 · **Revised:** 2026-05-17 (Phase 1 complete: 1.1–1.4 merged; **Phase 2 resequenced** — scripts+error-handling first, thin SKILL.md last). Prior revision 2026-05-16 (decomposed stack, ephemeral indexer, Option B, script-based skill, languages C#/Py/JS/TS, introspection first-class; **B-1 RESOLVED**: nomic-embed-code Q4_K_M via llama.cpp `--pooling last`, dim 3584)
+**Status:** ✅ Phase 1 complete (1.1 API/registry, 1.2 indexer, 1.3 query, 1.4 compose stack — all merged; live `docker compose up` smoke test in progress). ▶ Next: Phase 2.1 (host scripts + error handling).
