@@ -92,5 +92,22 @@ class FilesResponse(BaseModel):
     files: list[FileEntry]
 
 
+class QueryHit(BaseModel):
+    """One ranked search result. ``score`` is cosine similarity."""
+
+    path: str
+    language: str | None = None
+    start_line: int
+    end_line: int
+    code: str
+    score: float
+
+
+class QueryResponse(BaseModel):
+    repo_id: str
+    query: str
+    results: list[QueryHit] = Field(default_factory=list)
+
+
 class ErrorResponse(BaseModel):
     detail: str
