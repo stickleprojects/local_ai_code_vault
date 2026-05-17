@@ -108,6 +108,7 @@ BeforeAll {
 $a = $args
 switch ($a[0]) {
   'image'   { if ($env:VAULT_FAKE_IMAGE_MISSING -eq '1') { exit 1 } else { exit 0 } }
+  'build'   { if ($env:VAULT_FAKE_BUILD_FAIL -eq '1') { exit 1 } else { exit 0 } }
   'run'     {
       if ($a -contains '-d') { Write-Output 'cafef00dba5e'; exit 0 }
       [Console]::Error.WriteLine('[indexer] indexing...')
@@ -422,6 +423,7 @@ Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLi
         $env:PATH = $script:oldPath
         Remove-Item -Recurse -Force $script:repo, $script:shimDir -ErrorAction SilentlyContinue
         $env:VAULT_FAKE_IMAGE_MISSING = $null; $env:VAULT_FAKE_INSPECT = $null
+        $env:VAULT_FAKE_BUILD_FAIL = $null
     }
 
     It 'index-repo.ps1 exits 6 when the image is missing and no -Build' {
@@ -431,6 +433,25 @@ Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLi
             $r.Code | Should -Be 6
             $r.Json.error | Should -Match 'not found'
         } finally { $env:VAULT_FAKE_IMAGE_MISSING = $null }
+    }
+
+    It 'index-repo.ps1 -Rebuild forces a build even when the image exists' {
+        # Image present (default shim) — without -Rebuild no build runs.
+        # Make `docker build` fail; -Rebuild must still invoke it, so the
+        # failure surfaces as exit 6 (proves the build path was taken).
+        $env:VAULT_FAKE_BUILD_FAIL = '1'
+        try {
+            $r = Invoke-Script 'index-repo.ps1' @('-Path', $repo, '-Rebuild')
+            $r.Code | Should -Be 6
+            $r.Json.error | Should -Match 'build failed'
+        } finally { $env:VAULT_FAKE_BUILD_FAIL = $null }
+    }
+
+    It 'index-repo.ps1 -Rebuild then runs normally when the build succeeds' {
+        $r = Invoke-Script 'index-repo.ps1' @('-Path', $repo, '-Rebuild', '-Wait')
+        $r.Code | Should -Be 0
+        $r.Json.waited | Should -BeTrue
+        $r.Json.indexer.chunks | Should -Be 9
     }
 
     It 'index-repo.ps1 -Wait parses the indexer JSON summary' {
