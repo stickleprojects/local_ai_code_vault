@@ -9,20 +9,28 @@ description: >-
 
 # Vault skill (thin delegation — AD-4)
 
-**All logic lives in `scripts/*.ps1`.** This skill ONLY: picks the
+**All logic lives in the vault scripts.** This skill ONLY: picks the
 script for the command, runs it, parses its stdout JSON, and reports.
 Do not reimplement script behaviour, recompute `repo_id`, or call the
 API/Docker directly — always go through the scripts.
 
-Run scripts from the repo root the user is working in:
+The scripts live in **one** clone of the vault repo, not in the user's
+project. Invoke them by absolute path via `$env:VAULT_HOME` (set once by
+`scripts/install-skill.ps1`), passing the user's current repo as the
+path argument:
 
 ```
-pwsh -NoProfile -File scripts/<name>.ps1 <Path> [-Switches]
+pwsh -NoProfile -File "$env:VAULT_HOME/scripts/<name>.ps1" <repo-path> [-Switches]
 ```
+
+`<repo-path>` is the directory the user is working in (use `.` if you
+are already there). If `$env:VAULT_HOME` is unset, tell the user to run
+`pwsh -NoProfile -File scripts/install-skill.ps1` from their vault clone
+and restart Claude Code.
 
 Every script prints **one JSON object** on stdout (`ok`, `code`, plus
 fields) and uses stable exit codes. Parse stdout regardless of success.
-Full contracts: [scripts/README.md](scripts/README.md).
+Full contracts: `$env:VAULT_HOME/scripts/README.md`.
 
 ## Commands
 
@@ -33,6 +41,9 @@ Full contracts: [scripts/README.md](scripts/README.md).
 | `/vault-search <query>` | `query.ps1 "<query>" <path> [-Limit N]` | Format `results[]` as a readable list (path, line range, score, code). |
 | `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
 | `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
+
+Each script name above is invoked as `$env:VAULT_HOME/scripts/<name>`
+per the pattern at the top; `<path>` is the user's repo.
 
 ## Handling outcomes (surface, don't reimplement)
 

@@ -44,6 +44,12 @@ Path arguments accept any path inside the repo; the repo root (and
 | `VAULT_API_BASE`     | `http://localhost:8000`| all API callers    |
 | `VAULT_NETWORK`      | `vault_default`        | index-repo         |
 | `VAULT_INDEXER_IMAGE`| `vault-indexer:local`  | index-repo         |
+| `VAULT_HOME`         | (set by install-skill) | the skill, to locate these scripts from any repo |
+
+These scripts are **never copied into the repos you search** — they
+live in one clone and take the target repo as `<path>`. The skill finds
+them via `VAULT_HOME` (set once by `install-skill.ps1`); the scripts
+themselves are cwd-independent (`$PSScriptRoot`).
 
 `vault_default` is the compose network (project pinned `name: vault` in
 `docker-compose.yml`). The indexer image is built from
@@ -108,6 +114,14 @@ commit is never blocked or failed, and if the stack is down the reindex
 simply no-ops. Hooks carry a marker so `-Remove` only deletes
 vault-managed ones; a pre-existing non-vault hook is left untouched
 unless `-Force`. Requires `pwsh` on PATH at commit time.
+
+### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist]`
+One-time setup so `/vault-*` works in **any** repo: copies `SKILL.md`
+to `<SkillsRoot>/vault/` (default `~/.claude/skills/vault/`) and records
+`VAULT_HOME` = this clone's root (persisted to the Windows User
+environment unless `-NoPersist`; on non-Windows it sets the process var
+and prints the profile line to add). Re-run after moving/updating the
+clone; `-Remove` uninstalls. Restart Claude Code afterwards.
 
 ## Prerequisites
 
