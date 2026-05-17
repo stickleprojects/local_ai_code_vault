@@ -45,6 +45,8 @@ _IGNORE_DIRS = {
     ".tox",
     "dist",
     "build",
+    "obj",  # .NET intermediate output (generated *.g.cs, AssemblyInfo…)
+    "bin",  # .NET compiled output
     ".idea",
     ".vscode",
 }
