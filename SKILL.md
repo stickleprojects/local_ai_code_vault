@@ -24,13 +24,45 @@ pwsh -NoProfile -File "$env:VAULT_HOME/scripts/<name>.ps1" <repo-path> [-Switche
 ```
 
 `<repo-path>` is the directory the user is working in (use `.` if you
-are already there). If `$env:VAULT_HOME` is unset, tell the user to run
-`pwsh -NoProfile -File scripts/install-skill.ps1` from their vault clone
-and restart Claude Code.
+are already there).
+
+**Run only the script invocation above — no preflight probes.** Do not
+run separate shell commands to test `$env:VAULT_HOME`, list the scripts
+directory, or otherwise inspect the environment first. Each extra
+command is one more permission prompt for the user, and `$env:`-probe
+one-liners trip Claude Code's embedded-expression guard. The script
+itself already handles a missing/empty `VAULT_HOME`: just invoke it and
+read the result. If the invocation fails because `$env:VAULT_HOME` is
+unset (path not found / empty), tell the user to run `pwsh -NoProfile
+-File scripts/install-skill.ps1` from their vault clone and restart
+Claude Code — derive that from the failure, don't pre-check for it.
 
 Every script prints **one JSON object** on stdout (`ok`, `code`, plus
 fields) and uses stable exit codes. Parse stdout regardless of success.
 Full contracts: `$env:VAULT_HOME/scripts/README.md`.
+
+## Resolving the subcommand (read this first)
+
+This is **one** skill named `vault`; `status`/`index`/`search`/
+`inspect`/`hooks` are subcommands, not separate skills. The harness may
+hand you the invocation as bare `/vault` with the rest in arguments, so
+**determine the subcommand from the user's literal message**, not from
+the skill name alone.
+
+- Take the first of these keywords that appears in the user's input —
+  `index`, `status`, `search`, `inspect`, `hooks` — whether written
+  `/vault-index`, `/vault index`, `vault-index`, or as natural language
+  ("index this repo with vault"). A leading `-` (e.g. `-index`) is part
+  of the subcommand token; strip it. That keyword selects the row in
+  **Commands** below.
+- For `search`, everything after the keyword is the query string.
+- **Never** reply "you ran /vault with no subcommand" when any of those
+  keywords is present — that is the bug this section exists to prevent.
+  Treat it as "no subcommand" only when genuinely none is present *and*
+  there is no clear intent; then ask which one (single question), don't
+  re-loop the same prompt.
+- Once resolved, act immediately per that row — in particular `index`
+  runs right away (it is the user's explicit request; no confirmation).
 
 ## Commands
 
