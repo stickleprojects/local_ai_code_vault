@@ -341,6 +341,39 @@ Describe 'install-skill.ps1' {
     }
 }
 
+Describe 'install-copilot.ps1' {
+    It 'installs MCP settings + global instruction file (no persist)' {
+        $settings = Join-Path $TestDrive 'settings.json'
+        $instructionsRoot = Join-Path $TestDrive 'instructions'
+        $r = Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist')
+        $r.Code | Should -Be 0
+        $r.Json.installed | Should -BeTrue
+
+        Test-Path $settings | Should -BeTrue
+        $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
+        $cfg['chat.mcp.servers'].Contains('vault') | Should -BeTrue
+        $cfg['chat.mcp.servers']['vault']['args'][0] | Should -Match 'mcp/vault/server.py'
+
+        $instr = Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md'
+        Test-Path $instr | Should -BeTrue
+        (Get-Content -Raw $instr) | Should -Match 'vault_health'
+    }
+
+    It '-Remove unregisters MCP and deletes installed instruction file' {
+        $settings = Join-Path $TestDrive 'settings-rm.json'
+        $instructionsRoot = Join-Path $TestDrive 'instructions-rm'
+        Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist') | Out-Null
+
+        $r = Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist', '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.removed | Should -BeTrue
+
+        $cfg = Get-Content -Raw $settings | ConvertFrom-Json -AsHashtable
+        $cfg['chat.mcp.servers'].Contains('vault') | Should -BeFalse
+        Test-Path (Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md') | Should -BeFalse
+    }
+}
+
 Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLinux) {
     BeforeAll {
         $script:repo = New-TempGitRepo
