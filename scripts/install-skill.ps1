@@ -60,6 +60,20 @@ if (-not (Test-Path -LiteralPath $source)) {
 $null = New-Item -ItemType Directory -Force -Path $skillDir
 Copy-Item -LiteralPath $source -Destination $dest -Force
 
+# Bake the absolute scripts dir into the installed skill. The skill must
+# invoke scripts with a LITERAL path via `&` (no `pwsh -NoProfile -File`
+# child process, no `$env:` expression) so Claude Code does not prompt on
+# every call. The repo SKILL.md ships the `{{VAULT_SCRIPTS}}` placeholder;
+# only the installed copy gets the machine-specific path. .Replace() is a
+# literal (non-regex) substitution — safe for Windows backslash paths.
+$scriptsDir = (Resolve-Path -LiteralPath $PSScriptRoot).Path
+$skillText  = [IO.File]::ReadAllText($dest)
+$skillText  = $skillText.Replace('{{VAULT_SCRIPTS}}', $scriptsDir)
+if ($skillText -match '\{\{VAULT_SCRIPTS\}\}') {
+    Stop-VaultWithError "placeholder substitution failed in $dest" $VaultExit.Usage
+}
+[IO.File]::WriteAllText($dest, $skillText)
+
 # VAULT_HOME: process scope now (usable this session) + persisted so
 # new Claude Code processes inherit it.
 $env:VAULT_HOME = $cloneRoot
@@ -80,5 +94,6 @@ Write-VaultResult ([ordered]@{
     vault_home  = $cloneRoot
     persisted   = $persisted
     profile_hint = $profileHint
+    scripts_dir = $scriptsDir
     note        = 'restart Claude Code so it discovers the skill and inherits VAULT_HOME'
 }) 0
