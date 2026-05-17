@@ -32,6 +32,29 @@ Every script prints **one JSON object** on stdout (`ok`, `code`, plus
 fields) and uses stable exit codes. Parse stdout regardless of success.
 Full contracts: `$env:VAULT_HOME/scripts/README.md`.
 
+## Resolving the subcommand (read this first)
+
+This is **one** skill named `vault`; `status`/`index`/`search`/
+`inspect`/`hooks` are subcommands, not separate skills. The harness may
+hand you the invocation as bare `/vault` with the rest in arguments, so
+**determine the subcommand from the user's literal message**, not from
+the skill name alone.
+
+- Take the first of these keywords that appears in the user's input —
+  `index`, `status`, `search`, `inspect`, `hooks` — whether written
+  `/vault-index`, `/vault index`, `vault-index`, or as natural language
+  ("index this repo with vault"). A leading `-` (e.g. `-index`) is part
+  of the subcommand token; strip it. That keyword selects the row in
+  **Commands** below.
+- For `search`, everything after the keyword is the query string.
+- **Never** reply "you ran /vault with no subcommand" when any of those
+  keywords is present — that is the bug this section exists to prevent.
+  Treat it as "no subcommand" only when genuinely none is present *and*
+  there is no clear intent; then ask which one (single question), don't
+  re-loop the same prompt.
+- Once resolved, act immediately per that row — in particular `index`
+  runs right away (it is the user's explicit request; no confirmation).
+
 ## Commands
 
 | Command | Script | Then |
