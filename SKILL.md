@@ -15,31 +15,41 @@ Do not reimplement script behaviour, recompute `repo_id`, or call the
 API/Docker directly — always go through the scripts.
 
 The scripts live in **one** clone of the vault repo, not in the user's
-project. Invoke them by absolute path via `$env:VAULT_HOME` (set once by
-`scripts/install-skill.ps1`), passing the user's current repo as the
-path argument:
+project. Invoke them **in-process with the call operator `&`** at the
+absolute path below, passing the user's current repo as the path
+argument:
 
 ```
-pwsh -NoProfile -File "$env:VAULT_HOME/scripts/<name>.ps1" <repo-path> [-Switches]
+& "{{VAULT_SCRIPTS}}/<name>.ps1" <repo-path> [-Switches]
 ```
 
+`{{VAULT_SCRIPTS}}` is rewritten to this machine's absolute scripts
+directory by `scripts/install-skill.ps1` at install time (so the
+installed skill contains a literal path, not this placeholder).
 `<repo-path>` is the directory the user is working in (use `.` if you
 are already there).
 
-**Run only the script invocation above — no preflight probes.** Do not
-run separate shell commands to test `$env:VAULT_HOME`, list the scripts
-directory, or otherwise inspect the environment first. Each extra
-command is one more permission prompt for the user, and `$env:`-probe
-one-liners trip Claude Code's embedded-expression guard. The script
-itself already handles a missing/empty `VAULT_HOME`: just invoke it and
-read the result. If the invocation fails because `$env:VAULT_HOME` is
-unset (path not found / empty), tell the user to run `pwsh -NoProfile
--File scripts/install-skill.ps1` from their vault clone and restart
-Claude Code — derive that from the failure, don't pre-check for it.
+**Invoke exactly that line — `&` with the literal path, nothing else.**
+Critical, do not deviate:
+
+- **Do not** wrap it in `pwsh -NoProfile -File ...`. Spawning a child
+  `pwsh` makes Claude Code prompt the user every call ("nested
+  PowerShell process which cannot be validated"). `&` runs the script
+  in the current shell — no child process, no prompt.
+- **Do not** put `$env:VAULT_HOME` (or any `$(...)` / `$env:` token) in
+  the command. The path is already literal post-install; an embedded
+  expression trips Claude Code's expandable-string guard (another
+  prompt).
+- **No preflight probes.** Do not run separate commands to test the
+  environment or list the scripts directory first — each is another
+  prompt. Just run the one invocation and read its result.
+- If the script path does not exist (e.g. the clone moved), tell the
+  user to re-run `scripts/install-skill.ps1` from their vault clone and
+  restart Claude Code — derive that from the failure, don't pre-check.
 
 Every script prints **one JSON object** on stdout (`ok`, `code`, plus
 fields) and uses stable exit codes. Parse stdout regardless of success.
-Full contracts: `$env:VAULT_HOME/scripts/README.md`.
+Full contracts: `{{VAULT_SCRIPTS}}/README.md`.
 
 ## Resolving the subcommand (read this first)
 
@@ -74,8 +84,9 @@ the skill name alone.
 | `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
 | `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
 
-Each script name above is invoked as `$env:VAULT_HOME/scripts/<name>`
-per the pattern at the top; `<path>` is the user's repo.
+Each script name above is invoked as `& "{{VAULT_SCRIPTS}}/<name>.ps1"`
+per the pattern at the top (call operator, literal post-install path,
+no `pwsh -NoProfile -File` wrapper); `<path>` is the user's repo.
 
 ## Handling outcomes (surface, don't reimplement)
 
