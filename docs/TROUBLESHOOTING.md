@@ -107,6 +107,28 @@ a `local_ai_code_vault/scripts/` directory; every other PowerShell
 command stays gated. If your clone directory is not named
 `local_ai_code_vault`, widen the regex accordingly.
 
+**Risk vs benefit (decide before you install it).** Benefit: no
+approval prompt on every `/vault-*` call. Cost: this is an
+intentional, narrowly-scoped relaxation of Claude Code's
+human-in-the-loop approval gate — anything able to produce a command
+matching that regex runs vault scripts with no prompt. The scope is a
+single command shape (call-operator invocation of a script under
+`…/local_ai_code_vault/scripts/`); nothing else is auto-approved. The
+installer is opt-in, fail-closed, backs up `settings.json`, and
+probes your AV first (it never disables or evades it). If you are not
+comfortable with that trade-off, **don't install the hook** — keep
+clicking approve, or paste a manually narrowed variant.
+
+**Undo / remove the permission hook.** `install-skill.ps1 -Remove`
+uninstalls the *skill* but intentionally does **not** touch your
+`settings.json`. To remove the pre-approval: restore the timestamped
+`~/.claude/settings.json.bak-<timestamp>` the installer wrote (its path
+is in the install result as `settings_backup`), **or** edit
+`~/.claude/settings.json` and delete the `hooks.PreToolUse` entry whose
+`command` contains `local_ai_code_vault` (leave any other PreToolUse
+entries intact). Restart Claude Code; the per-call prompt returns
+immediately.
+
 **code 4 but `docker compose ps` looks up.** The API healthcheck is
 authoritative — check `curl -fsS http://localhost:8000/api/status`. If
 it reports `qdrant_connected:false`, Qdrant isn't reachable from the

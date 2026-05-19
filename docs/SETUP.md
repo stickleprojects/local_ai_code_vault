@@ -48,6 +48,38 @@ Then **restart Claude Code**. This copies `SKILL.md` to
 `VAULT_HOME` = this clone's root so the skill can locate the scripts.
 Re-run after moving/updating the clone; `-Remove` uninstalls.
 
+### Optional: stop the per-call approval prompt (security trade-off)
+
+Out of the box Claude Code prompts for approval on **every** `/vault-*`
+call. You can pre-approve by adding `-PermissionHook Install`:
+
+```
+pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
+```
+
+**What it changes:** it writes a scoped `PreToolUse` hook into your
+**global** `~/.claude/settings.json` that **auto-approves (no prompt)**
+PowerShell calls which invoke a script under a
+`local_ai_code_vault/scripts/` directory. Every other command still
+prompts as normal.
+
+- **Benefit:** no approval prompt on each `/vault-*` call.
+- **Risk:** this is an intentional, narrowly-scoped relaxation of the
+  human-in-the-loop approval gate for that one command class. Anything
+  that can write a matching command could run vault scripts without a
+  prompt.
+- **Safeguards:** opt-in (the default does nothing to settings.json);
+  fail-closed (a non-interactive run, `Skip`, a `no`, malformed JSON,
+  or any write error keeps the prompt); a timestamped `.bak` is written
+  first; a non-evasive antivirus probe runs before writing and never
+  disables/evades your AV.
+- **Reversible:** restore the `.bak`, or delete the `PreToolUse` entry
+  whose command contains `local_ai_code_vault`, then restart Claude
+  Code.
+
+Full detail, the exact hook, AV guidance, and the manual-paste
+alternative: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
 ## 4. Build the indexer image
 
 Built on demand by `index-repo.ps1 -Build` (first index below), or
