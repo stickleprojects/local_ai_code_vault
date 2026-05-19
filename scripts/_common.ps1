@@ -129,7 +129,6 @@ function Get-VaultBodyValue {
     if ($null -eq $Body) { return $null }
     if ($Body -is [System.Collections.IDictionary]) {
         if ($Body.Contains($Key)) { return $Body[$Key] }
-        if ($Body.PSObject.Methods.Name -contains 'ContainsKey' -and $Body.ContainsKey($Key)) { return $Body[$Key] }
         return $null
     }
     $prop = $Body.PSObject.Properties[$Key]
