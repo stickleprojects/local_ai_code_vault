@@ -419,7 +419,36 @@ Describe 'install-skill.ps1' {
         $r.Json.permission_hook_present | Should -BeFalse  # security NOT bypassed
         $r.Json.permission_hook_action  | Should -Be 'skipped'
         $r.Json.permission_hook_hint    | Should -Not -BeNullOrEmpty
+        $r.Json.repo_hooks_action       | Should -Be 'skipped'
+        $r.Json.repo_hooks_hint         | Should -Not -BeNullOrEmpty
         Test-Path $set | Should -BeFalse                   # settings.json untouched
+    }
+
+    It 'installs repo freshness hooks when explicitly requested' {
+        $root = Join-Path $TestDrive 'skills-hooks-install'
+        $repo = New-TempGitRepo
+        try {
+            $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-RepoHooks', 'Install', '-RepoPath', $repo)
+            $r.Code | Should -Be 0
+            $r.Json.repo_hooks_action | Should -Be 'installed'
+            $r.Json.repo_hooks_repo_root | Should -Be $repo
+            Test-Path (Join-Path $repo '.git/hooks/post-commit') | Should -BeTrue
+            Test-Path (Join-Path $repo '.git/hooks/post-merge') | Should -BeTrue
+        } finally {
+            Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'fails gracefully when repo hook install is requested for a non-git path' {
+        $root = Join-Path $TestDrive 'skills-hooks-fail'
+        $notRepo = Join-Path $TestDrive 'not-a-repo'
+        New-Item -ItemType Directory -Path $notRepo | Out-Null
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-RepoHooks', 'Install', '-RepoPath', $notRepo)
+        $r.Code | Should -Be 0
+        $r.Json.installed | Should -BeTrue
+        $r.Json.repo_hooks_action | Should -Be 'failed'
+        $r.Json.repo_hooks_error | Should -Not -BeNullOrEmpty
+        $r.Json.repo_hooks_hint | Should -Not -BeNullOrEmpty
     }
 
     It 'explicit -PermissionHook Install pre-approves, idempotently, preserving other keys' {

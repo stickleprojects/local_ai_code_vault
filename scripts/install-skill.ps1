@@ -78,7 +78,10 @@ param(
     [string]$SettingsPath = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.claude/settings.json'),
     [ValidateSet('Ask','Install','Skip')]
     [string]$PermissionHook = 'Ask',
-    [switch]$IgnoreAvBlock
+    [switch]$IgnoreAvBlock,
+    [ValidateSet('Ask','Install','Skip')]
+    [string]$RepoHooks = 'Ask',
+    [string]$RepoPath = '.'
 )
 
 . "$PSScriptRoot/_common.ps1"
@@ -259,6 +262,36 @@ function Set-VaultPermissionHook {
     return @{ installed = $installed; backup = $backup }
 }
 
+function Install-VaultRepoHooks {
+    # Best-effort helper that delegates to install-git-hooks.ps1 and
+    # returns a stable result map for this install script's JSON output.
+    param([Parameter(Mandatory)][string]$Path)
+    $hookScript = Join-Path $PSScriptRoot 'install-git-hooks.ps1'
+    if (-not (Test-Path -LiteralPath $hookScript)) {
+        return @{ action = 'failed'; error = "hook installer missing: $hookScript"; repo_root = $null }
+    }
+    $raw = $null
+    try {
+        $raw = & "$hookScript" -Path $Path 2>$null
+    } catch {
+        return @{ action = 'failed'; error = $_.Exception.Message; repo_root = $null }
+    }
+    $code = $LASTEXITCODE
+    $parsed = $null
+    if ($raw) {
+        try { $parsed = ($raw -join "`n") | ConvertFrom-Json -AsHashtable } catch { $parsed = $null }
+    }
+    if ($code -eq 0) {
+        $repoRoot = $null
+        if ($parsed -is [hashtable] -and $parsed.ContainsKey('repo_root')) { $repoRoot = [string]$parsed['repo_root'] }
+        return @{ action = 'installed'; error = $null; repo_root = $repoRoot }
+    }
+    $err = $null
+    if ($parsed -is [hashtable] -and $parsed.ContainsKey('error')) { $err = [string]$parsed['error'] }
+    if ([string]::IsNullOrWhiteSpace($err)) { $err = "install-git-hooks exited with code $code" }
+    return @{ action = 'failed'; error = $err; repo_root = $null }
+}
+
 function Get-AvProduct {
     # Best-effort, informational ONLY. We never read this to change AV
     # behaviour — just to name the product so the message is actionable.
@@ -405,6 +438,38 @@ $note = if ($permHookInstalled) {
     'restart Claude Code so it discovers the skill and inherits VAULT_HOME'
 }
 
+$repoHooksAction = 'skipped'
+$repoHooksError  = $null
+$repoHooksHint   = $null
+$repoHooksRoot   = $null
+$repoHookCmd     = "pwsh -NoProfile -File `"$PSScriptRoot/install-git-hooks.ps1`" -Path `"$RepoPath`""
+if (-not $Remove) {
+    $repoDesired = $RepoHooks
+    if ($repoDesired -eq 'Ask') {
+        if ($interactive) {
+            Write-Host ''
+            Write-Host 'Freshness setup (recommended): install non-blocking git hooks for this repo now.'
+            Write-Host 'These post-commit/post-merge hooks trigger background incremental reindex and never block commits.'
+            Write-Host "Target repo path: $RepoPath"
+            $ans = Read-Host 'Type exactly  yes  to install repo hooks now (anything else skips)'
+            $repoDesired = if ($ans -ceq 'yes') { 'Install' } else { 'Skip' }
+        } else {
+            $repoDesired = 'Skip'
+        }
+    }
+    if ($repoDesired -eq 'Install') {
+        $hookInstall = Install-VaultRepoHooks -Path $RepoPath
+        $repoHooksAction = [string]$hookInstall.action
+        $repoHooksError  = $hookInstall.error
+        $repoHooksRoot   = $hookInstall.repo_root
+        if ($repoHooksAction -eq 'failed') {
+            $repoHooksHint = "Repo hooks were not installed. Fix the repo path or run manually: $repoHookCmd"
+        }
+    } else {
+        $repoHooksHint = "To install repo freshness hooks later, run: $repoHookCmd"
+    }
+}
+
 Write-VaultResult ([ordered]@{
     installed               = $true
     skill_dir               = $skillDir
@@ -420,5 +485,9 @@ Write-VaultResult ([ordered]@{
     permission_hook_action  = $permHookAction
     permission_hook_error   = $permHookError
     permission_hook_hint    = $permHookHint
+    repo_hooks_action       = $repoHooksAction
+    repo_hooks_repo_root    = $repoHooksRoot
+    repo_hooks_error        = $repoHooksError
+    repo_hooks_hint         = $repoHooksHint
     note                    = $note
 }) 0

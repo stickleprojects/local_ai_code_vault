@@ -127,7 +127,7 @@ simply no-ops. Hooks carry a marker so `-Remove` only deletes
 vault-managed ones; a pre-existing non-vault hook is left untouched
 unless `-Force`. Requires `pwsh` on PATH at commit time.
 
-### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist] [-SettingsPath <file>] [-PermissionHook Ask|Install|Skip] [-IgnoreAvBlock]`
+### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist] [-SettingsPath <file>] [-PermissionHook Ask|Install|Skip] [-IgnoreAvBlock] [-RepoHooks Ask|Install|Skip] [-RepoPath <path>]`
 One-time setup so `/vault-*` works in **any** repo: copies `SKILL.md`
 to `<SkillsRoot>/vault/` (default `~/.claude/skills/vault/`) and records
 `VAULT_HOME` = this clone's root (persisted to the Windows User
@@ -166,6 +166,15 @@ interactive), and points the user at adding their own AV exclusion.
 `-IgnoreAvBlock` is the explicit, informed override to install anyway
 (the non-interactive equivalent of "install anyway"). See
 [../docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).
+
+`-RepoHooks` controls whether repo freshness hooks are installed during
+skill setup. `Ask` (default) prompts only in interactive runs; in
+non-interactive runs it safely skips. `Install` runs
+`install-git-hooks.ps1 -Path <RepoPath>` so `post-commit`/`post-merge`
+trigger background incremental reindexing. `Skip` leaves hooks
+unchanged. Output includes `repo_hooks_action`
+(`installed`/`skipped`/`failed`), `repo_hooks_repo_root`,
+`repo_hooks_error`, and `repo_hooks_hint`.
 
 ### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
 One-time user-scope Copilot setup (no per-repo config): records

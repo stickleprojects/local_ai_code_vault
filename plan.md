@@ -112,7 +112,7 @@ Proven file = Ollama blob `sha256-4354a73ee9ff5d811efe552a515dfd518667ff25fdfc4e
 2. User ensures the vault stack is running (`docker compose up -d`, or always-on). Skill verifies via `scripts/vault-health.ps1`.
 3. User asks Claude to check registration. Claude runs `scripts/repo-id.ps1` then `scripts/vault-status.ps1`; if not registered, offers to index via `scripts/index-repo.ps1`.
 4. Claude compares stored indexed SHA (from `vault-status`) vs local `git rev-parse HEAD` (AD-6). If stale, Claude tells the user how many commits / which files changed and offers a (incremental) reindex.
-5. Claude offers to install git hooks (`scripts/install-git-hooks.ps1`) for automatic reindex on commit/merge.
+5. Claude offers to install git hooks (`scripts/install-git-hooks.ps1`) for automatic reindex on commit/merge. The skill installer flow should also prompt to install these repo freshness hooks so users can enable auto-refresh during setup.
 6. Background reindex completion: `index-repo.ps1` returns a job/container id; `scripts/index-status.ps1` reports state via `docker wait`/`docker inspect`. Claude can poll it as a tracked background task and report completion **within the open session**. (No detached OS notification when Claude is closed — documented limitation.)
 
 ---
@@ -200,6 +200,7 @@ Each script: clear name, single responsibility, runnable standalone with documen
 - `scripts/query.ps1 <path> <query>` — resolve repo_id, call `/api/query`, return formatted results.
 - `scripts/vault-inspect.ps1 <path> [--files] [--language <lang>]` — resolve repo_id, call `/api/repos/{repo_id}/stats` (and `/files` with `--files`); returns indexed SHA/time, file + chunk counts, per-language breakdown, skipped count, optional file inventory. Read-only (AD-9).
 - `scripts/install-git-hooks.ps1 <path> [--remove]` — writes a minimal POSIX `post-commit`/`post-merge` hook (git runs hooks via bundled `sh` on Windows) that fires `index-repo` non-blocking; hook degrades gracefully if the stack is down.
+- `scripts/install-skill.ps1 ...` should include an explicit, fail-safe prompt to install repo freshness hooks (`install-git-hooks.ps1`) for a chosen repo path during setup; non-interactive runs default to skip.
 - **Error handling & fallbacks (intrinsic to each script, consistent exit codes — never in the skill):** stack down → restart instructions; repo not registered → offer `/vault-index`; not a git repo → explain; indexer non-zero exit → surface `docker logs`; VRAM/queue busy → retry guidance.
 - **Owner:** Claude
 - **Dependencies:** Phase 1 complete
