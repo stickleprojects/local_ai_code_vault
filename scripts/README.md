@@ -176,13 +176,22 @@ unchanged. Output includes `repo_hooks_action`
 (`installed`/`skipped`/`failed`), `repo_hooks_repo_root`,
 `repo_hooks_error`, and `repo_hooks_hint`.
 
-### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
+### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist] [-RepoHooks Ask|Install|Skip] [-RepoPath <path>]`
 One-time user-scope Copilot setup (no per-repo config): records
 `VAULT_HOME`, registers MCP server `vault_mcp/vault/server.py` under VS
 Code user settings (`mcp.servers.vault`), installs global instruction
 asset (`copilot/instructions/vault-global.instructions.md`), and runs a
 post-install `vault-health.ps1` check. `-Remove` unregisters MCP +
 instruction entry and deletes the installed instruction file.
+
+`-RepoHooks` controls whether repo freshness hooks are installed during
+Copilot setup. `Ask` (default) prompts only in interactive runs; in
+non-interactive runs it safely skips. `Install` runs
+`install-git-hooks.ps1 -Path <RepoPath>` so `post-commit`/`post-merge`
+trigger background incremental reindexing. `Skip` leaves hooks
+unchanged. Output includes `repo_hooks_action`
+(`installed`/`skipped`/`failed`), `repo_hooks_repo_root`,
+`repo_hooks_error`, and `repo_hooks_hint`.
 
 ## Prerequisites
 

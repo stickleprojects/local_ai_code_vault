@@ -24,13 +24,23 @@
 
 .PARAMETER NoPersist
   Do not persist VAULT_HOME to user environment (process scope only).
+
+.PARAMETER RepoHooks
+    Whether to install repo freshness hooks during setup:
+        Ask (default, interactive prompt only), Install, or Skip.
+
+.PARAMETER RepoPath
+    Repo path used when installing freshness hooks.
 #>
 [CmdletBinding()]
 param(
     [string]$SettingsPath,
     [string]$InstructionsRoot = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.copilot/instructions'),
     [switch]$Remove,
-    [switch]$NoPersist
+        [switch]$NoPersist,
+        [ValidateSet('Ask','Install','Skip')]
+        [string]$RepoHooks = 'Ask',
+        [string]$RepoPath = '.'
 )
 
 . "$PSScriptRoot/_common.ps1"
@@ -147,6 +157,36 @@ function Write-JsonObject {
     }
 }
 
+function Install-VaultRepoHooks {
+    # Best-effort helper that delegates to install-git-hooks.ps1 and
+    # returns a stable result map for this install script's JSON output.
+    param([Parameter(Mandatory)][string]$Path)
+    $hookScript = Join-Path $PSScriptRoot 'install-git-hooks.ps1'
+    if (-not (Test-Path -LiteralPath $hookScript)) {
+        return @{ action = 'failed'; error = "hook installer missing: $hookScript"; repo_root = $null }
+    }
+    $raw = $null
+    try {
+        $raw = & "$hookScript" -Path $Path 2>$null
+    } catch {
+        return @{ action = 'failed'; error = $_.Exception.Message; repo_root = $null }
+    }
+    $code = $LASTEXITCODE
+    $parsed = $null
+    if ($raw) {
+        try { $parsed = ($raw -join "`n") | ConvertFrom-Json -AsHashtable } catch { $parsed = $null }
+    }
+    if ($code -eq 0) {
+        $repoRoot = $null
+        if ($parsed -is [hashtable] -and $parsed.ContainsKey('repo_root')) { $repoRoot = [string]$parsed['repo_root'] }
+        return @{ action = 'installed'; error = $null; repo_root = $repoRoot }
+    }
+    $err = $null
+    if ($parsed -is [hashtable] -and $parsed.ContainsKey('error')) { $err = [string]$parsed['error'] }
+    if ([string]::IsNullOrWhiteSpace($err)) { $err = "install-git-hooks exited with code $code" }
+    return @{ action = 'failed'; error = $err; repo_root = $null }
+}
+
 $cloneRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
 $settings = if ($SettingsPath) { $SettingsPath } else { Get-DefaultVsCodeSettingsPath }
 $mcpServer = Join-Path $cloneRoot 'vault_mcp/vault/server.py'
@@ -156,6 +196,12 @@ $pythonLaunch = Resolve-PythonLaunchSpec
 $instructionSource = Join-Path $cloneRoot 'copilot/instructions/vault-global.instructions.md'
 $instructionDir = Join-Path $InstructionsRoot 'vault'
 $instructionDest = Join-Path $instructionDir 'vault-global.instructions.md'
+$interactive = (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
+$repoHooksAction = 'skipped'
+$repoHooksError  = $null
+$repoHooksHint   = $null
+$repoHooksRoot   = $null
+$repoHookCmd     = "pwsh -NoProfile -File `"$PSScriptRoot/install-git-hooks.ps1`" -Path `"$RepoPath`""
 
 if (-not (Test-Path -LiteralPath $mcpServer)) {
     Stop-VaultWithError "vault MCP server not found at $mcpServer" $VaultExit.Usage
@@ -268,6 +314,31 @@ if ($null -eq $healthJson) {
     $healthJson = [ordered]@{ ok = ($healthCode -eq 0); code = $healthCode; raw = "$healthRaw" }
 }
 
+$repoDesired = $RepoHooks
+if ($repoDesired -eq 'Ask') {
+    if ($interactive) {
+        Write-Host ''
+        Write-Host 'Freshness setup (recommended): install non-blocking git hooks for this repo now.'
+        Write-Host 'These post-commit/post-merge hooks trigger background incremental reindex and never block commits.'
+        Write-Host "Target repo path: $RepoPath"
+        $ans = Read-Host 'Type exactly  yes  to install repo hooks now (anything else skips)'
+        $repoDesired = if ($ans -ceq 'yes') { 'Install' } else { 'Skip' }
+    } else {
+        $repoDesired = 'Skip'
+    }
+}
+if ($repoDesired -eq 'Install') {
+    $hookInstall = Install-VaultRepoHooks -Path $RepoPath
+    $repoHooksAction = [string]$hookInstall.action
+    $repoHooksError  = $hookInstall.error
+    $repoHooksRoot   = $hookInstall.repo_root
+    if ($repoHooksAction -eq 'failed') {
+        $repoHooksHint = "Repo hooks were not installed. Fix the repo path or run manually: $repoHookCmd"
+    }
+} else {
+    $repoHooksHint = "To install repo freshness hooks later, run: $repoHookCmd"
+}
+
 $settingsNotice = $null
 if ($writeMeta.rewritten) {
     $settingsNotice = "settings.json has been rewritten; backup saved to $($writeMeta.backup_path)"
@@ -285,6 +356,10 @@ Write-VaultResult ([ordered]@{
     settings_rewritten = $writeMeta.rewritten
     settings_backup_path = $writeMeta.backup_path
     settings_notice = $settingsNotice
+    repo_hooks_action = $repoHooksAction
+    repo_hooks_repo_root = $repoHooksRoot
+    repo_hooks_error = $repoHooksError
+    repo_hooks_hint = $repoHooksHint
     health = $healthJson
     note = 'restart VS Code/Copilot so user-scope MCP and instructions are reloaded'
 }) 0

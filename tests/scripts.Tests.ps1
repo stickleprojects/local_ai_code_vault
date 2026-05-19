@@ -567,6 +567,37 @@ Describe 'install-copilot.ps1' {
         $instr = Join-Path $instructionsRoot 'vault' 'vault-global.instructions.md'
         Test-Path $instr | Should -BeTrue
         (Get-Content -Raw $instr) | Should -Match 'vault_health'
+        $r.Json.repo_hooks_action | Should -Be 'skipped'
+        $r.Json.repo_hooks_hint | Should -Not -BeNullOrEmpty
+    }
+
+    It 'installs repo freshness hooks when explicitly requested' {
+        $settings = Join-Path $TestDrive 'settings-hooks.json'
+        $instructionsRoot = Join-Path $TestDrive 'instructions-hooks'
+        $repo = New-TempGitRepo
+        try {
+            $r = Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist', '-RepoHooks', 'Install', '-RepoPath', $repo)
+            $r.Code | Should -Be 0
+            $r.Json.repo_hooks_action | Should -Be 'installed'
+            $r.Json.repo_hooks_repo_root | Should -Be $repo
+            Test-Path (Join-Path $repo '.git/hooks/post-commit') | Should -BeTrue
+            Test-Path (Join-Path $repo '.git/hooks/post-merge') | Should -BeTrue
+        } finally {
+            Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'fails gracefully when repo hook install is requested for a non-git path' {
+        $settings = Join-Path $TestDrive 'settings-hooks-fail.json'
+        $instructionsRoot = Join-Path $TestDrive 'instructions-hooks-fail'
+        $notRepo = Join-Path $TestDrive 'not-a-repo-copilot'
+        New-Item -ItemType Directory -Path $notRepo | Out-Null
+        $r = Invoke-Script 'install-copilot.ps1' @('-SettingsPath', $settings, '-InstructionsRoot', $instructionsRoot, '-NoPersist', '-RepoHooks', 'Install', '-RepoPath', $notRepo)
+        $r.Code | Should -Be 0
+        $r.Json.installed | Should -BeTrue
+        $r.Json.repo_hooks_action | Should -Be 'failed'
+        $r.Json.repo_hooks_error | Should -Not -BeNullOrEmpty
+        $r.Json.repo_hooks_hint | Should -Not -BeNullOrEmpty
     }
 
     It 'handles JSONC settings, preserves unrelated keys, and reports backup on rewrite' {
