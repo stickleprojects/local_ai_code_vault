@@ -17,6 +17,15 @@ and phase plan are in [plan.md](plan.md).
 - Docker + Compose v2, an NVIDIA GPU + the NVIDIA Container Toolkit.
 - PowerShell 7+ (`pwsh`) and `git` on PATH.
 
+## Quick Applicability Map
+
+- **Shared (Claude + Copilot):** stack startup, indexing, search data model,
+  and host scripts in `scripts/`.
+- **Claude only:** `/vault-*` skill flow and `install-skill.ps1`
+  `-PermissionHook` approval-bypass options.
+- **Copilot only:** MCP flow via `install-copilot.ps1` and MCP tools
+  (`vault_index`, `vault_search`, etc.).
+
 ## Usage
 
 **You clone this repo once.** Its `scripts/` and `SKILL.md` are **never
@@ -26,15 +35,15 @@ scripts by absolute path, and they take the target repo as an argument.
 1. **Start the stack:** `cp .env.example .env` then
    `docker compose up -d --build`. Full setup, GPU prerequisites, and
    validation steps: [README_SETUP.md](README_SETUP.md).
-2. **Install Claude skill (one-time, from this clone):**
+2. **Install Claude skill (one-time, from this clone, Claude only):**
    `pwsh -NoProfile -File scripts/install-skill.ps1`, then restart
    Claude Code. This places the skill in `~/.claude/skills/vault/` (so
-   `/vault-*` works in *any* repo) and records `VAULT_HOME` so it can
+   `/vault-*` works in _any_ repo) and records `VAULT_HOME` so it can
    find the scripts. Re-run it if you move/update the clone;
    `-Remove` uninstalls.
 
    > ⚠️ **SECURITY WARNING — read this before using `-PermissionHook
-   > Install`.** By default Claude Code asks you to approve **every**
+Install`.** By default Claude Code asks you to approve **every**
    > `/vault-*` call. The optional `-PermissionHook Install` writes an
    > auto-allow hook into your **global** `~/.claude/settings.json` so
    > that PowerShell calls to vault scripts **run without asking you**.
@@ -48,8 +57,15 @@ scripts by absolute path, and they take the target repo as an argument.
    > **safe default does nothing** — install the skill, try `/vault-*`
    > with the prompt on, and only enable the bypass later (re-run with
    > `-PermissionHook Install`) if you accept the trade-off.
+   > Bitdefender/AMSI note: see
+   > [Good antivirus citizen (Claude only)](docs/TROUBLESHOOTING.md#good-antivirus-citizen-claude-only)
+   > for exact guidance.
    > `install-skill.ps1 -Remove` removes the hook again. Full trade-off,
    > the exact hook, and undo: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+   >
+   > If you only use Copilot, skip this step and go to
+   > [Copilot global setup](README.md#copilot-global-setup-mcp-no-per-repo-config-copilot-only).
+
 3. **Open the repo you want to search** in Claude Code (any repo,
    anywhere — it does not need this project's files).
 4. **Index it:** `/vault-index` (or, by hand from this clone,
@@ -76,7 +92,7 @@ Claude and Copilot intentionally reuse the same runtime contracts:
 This keeps behavior aligned across both clients and avoids duplicated
 implementation paths.
 
-## Copilot global setup (MCP, no per-repo config)
+## Copilot global setup (MCP, no per-repo config, Copilot only)
 
 Copilot can use the same host scripts via a thin MCP adapter, installed
 once at user scope (no repo-local Copilot files required):
@@ -89,6 +105,7 @@ once at user scope (no repo-local Copilot files required):
    `vault_hooks`.
 
 Validation checklist:
+
 - [ ] `install-copilot.ps1` reports `installed:true` and shows a
       `settings_path`.
 - [ ] In a new repo, Copilot can call `vault_index`/`vault_status`

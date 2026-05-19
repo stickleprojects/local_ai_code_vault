@@ -4,6 +4,13 @@ End-to-end path. The GPU/stack specifics are not duplicated here —
 [README_SETUP.md](../README_SETUP.md) is authoritative for the Docker
 stack; this stitches the whole flow together.
 
+## Applicability
+
+- **Shared (Claude + Copilot):** sections 1, 2, 4.
+- **Claude only:** sections 3 and 5 (`/vault-*` commands).
+- **Copilot only:** use `scripts/install-copilot.ps1` from the repo
+  root README flow; Claude `-PermissionHook` notes do not apply.
+
 ## Prerequisites
 
 - Docker Engine + Compose v2 (`docker compose version` ≥ 2.20).
@@ -15,7 +22,7 @@ stack; this stitches the whole flow together.
 
 ## 1. Clone once
 
-You clone **this** repo once. Its `scripts/` and `SKILL.md` are *never*
+You clone **this** repo once. Its `scripts/` and `SKILL.md` are _never_
 copied into the repos you want to search — the skill calls the central
 scripts by absolute path and passes the target repo as an argument.
 
@@ -35,7 +42,7 @@ docker compose ps                       # api healthy; model-fetch exited(0)
 curl -fsS http://localhost:8000/api/status   # qdrant_connected:true, embed_dim:3584
 ```
 
-## 3. Install the skill (one-time)
+## 3. Install the skill (one-time, Claude only)
 
 From this clone:
 
@@ -48,7 +55,11 @@ Then **restart Claude Code**. This copies `SKILL.md` to
 `VAULT_HOME` = this clone's root so the skill can locate the scripts.
 Re-run after moving/updating the clone; `-Remove` uninstalls.
 
-### Optional: disable the per-call approval prompt (your call, your risk)
+### Optional: disable the per-call approval prompt (Claude only, your call, your risk)
+
+This section is **Claude Code only**. The prompt/bypass flow here uses
+Claude's `PreToolUse` hook in `~/.claude/settings.json`.
+`install-copilot.ps1` does not write that hook.
 
 > ⚠️ Out of the box Claude Code prompts you to approve **every**
 > `/vault-*` call. That prompt is a safety check. You can turn it off
@@ -87,12 +98,17 @@ prompts as normal.
   timestamped `.bak` is written first; a non-evasive antivirus probe
   runs before writing and never disables/evades your AV.
 - **Reversible:** `pwsh -NoProfile -File scripts/install-skill.ps1
-  -Remove` removes the hook again (backs up first, keeps your other
+-Remove` removes the hook again (backs up first, keeps your other
   hooks). Or restore the `.bak`, or delete the `PreToolUse` entry whose
   command contains `local_ai_code_vault`. Restart Claude Code after.
 
 Full detail, the exact hook, AV guidance, and the manual-paste
 alternative: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
+
+Copilot note: this repository has no equivalent Copilot `PreToolUse`
+bypass setting. If you are using Copilot, follow
+`scripts/install-copilot.ps1`; the Claude `-PermissionHook` options do
+not apply there.
 
 ## 4. Build the indexer image
 
@@ -103,7 +119,7 @@ explicitly once:
 pwsh -NoProfile -File scripts/index-repo.ps1 <repo-path> -Build -Wait
 ```
 
-## 5. Index and search a repo
+## 5. Index and search a repo (Claude command examples)
 
 Open the repo you want to search in Claude Code (any repo, anywhere —
 it does not need this project's files), then:
@@ -120,9 +136,9 @@ Equivalent by-hand invocations and sample output:
 
 ## Environment overrides (rarely needed)
 
-| var | default | used by |
-|---|---|---|
-| `VAULT_API_BASE` | `http://localhost:8000` | all API callers |
-| `VAULT_NETWORK` | `vault_default` | `index-repo.ps1` |
-| `VAULT_INDEXER_IMAGE` | `vault-indexer:local` | `index-repo.ps1` |
-| `VAULT_HOME` | set by `install-skill.ps1` | skill, to find scripts |
+| var                   | default                    | used by                |
+| --------------------- | -------------------------- | ---------------------- |
+| `VAULT_API_BASE`      | `http://localhost:8000`    | all API callers        |
+| `VAULT_NETWORK`       | `vault_default`            | `index-repo.ps1`       |
+| `VAULT_INDEXER_IMAGE` | `vault-indexer:local`      | `index-repo.ps1`       |
+| `VAULT_HOME`          | set by `install-skill.ps1` | skill, to find scripts |

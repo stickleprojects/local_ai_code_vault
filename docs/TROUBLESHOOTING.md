@@ -6,6 +6,14 @@ first, then by surface. Stack-level (model/GPU) issues are covered in
 [README_SETUP.md](../README_SETUP.md#troubleshooting) — not duplicated
 here.
 
+## Client scope
+
+- **Claude-only topics:** per-call `/vault-*` approval prompts,
+  `-PermissionHook`, `~/.claude/settings.json`, and `PreToolUse` hook
+  behavior.
+- **Copilot topics:** MCP installation/use via `install-copilot.ps1`.
+  Copilot setup does not use the Claude `-PermissionHook` flow.
+
 ## By exit code
 
 | code | name          | What it means → do this                                                                        |
@@ -35,6 +43,11 @@ matches and cannot suppress the prompt. The fix is a **scoped
 `.claude/settings.json` — the skill runs from _other_ repos). This is
 a **one-time, global** step; it is not per-repo.
 
+This symptom is **Claude-specific** in this project. Copilot setup via
+`scripts/install-copilot.ps1` does not add/remove Claude
+`PreToolUse` hooks, and the `-PermissionHook` flow described below is
+not part of Copilot installation.
+
 **Easiest:** let the installer pre-approve it (explicit grant only):
 
 ```
@@ -49,9 +62,11 @@ This is **fail-closed**: it writes the hook only on an explicit grant
 bypassed by accident. Restart Claude Code afterwards (hooks load at
 session start).
 
-**Good antivirus citizen.** Some AV products (e.g. Bitdefender, or
-Defender via AMSI) flag the auto-allow hook. We deal with this
-_honestly and without ever weakening your antivirus_:
+### Good antivirus citizen (Claude only)
+
+Some AV products (e.g. Bitdefender, or Defender via AMSI) flag the
+auto-allow hook. We deal with this _honestly and without ever weakening
+your antivirus_:
 
 - The hook command is kept in a **data file**
   (`scripts/vault-permission-hook.json`), never inlined into a `.ps1`,
