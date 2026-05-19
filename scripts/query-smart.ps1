@@ -137,7 +137,7 @@ if ($health.code -ne 0) {
 
 # 2) Try semantic query first.
 $queryCall = Invoke-JsonScript -ScriptName 'query.ps1' -PositionalArgs @($Query) -NamedArgs @{
-    Path = $root
+    Path  = $root
     Limit = $Limit
 }
 if ($queryCall.code -eq 0) {
@@ -167,7 +167,7 @@ if ($queryCall.code -eq $VaultExit.NotRegistered) {
     }
 
     $retry = Invoke-JsonScript -ScriptName 'query.ps1' -PositionalArgs @($Query) -NamedArgs @{
-        Path = $root
+        Path  = $root
         Limit = $Limit
     }
     if ($retry.code -eq 0) {
