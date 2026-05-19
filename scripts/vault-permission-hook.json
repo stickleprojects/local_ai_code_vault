@@ -1,0 +1,12 @@
+{
+  "matcher": "PowerShell",
+  "hooks": [
+    {
+      "type": "command",
+      "shell": "powershell",
+      "command": "$j=[Console]::In.ReadToEnd()|ConvertFrom-Json;$c=[string]$j.tool_input.command;if($c -match '^\\s*&\\s+\"[^\"]*local_ai_code_vault[\\\\/]+scripts[\\\\/]'){@{hookSpecificOutput=@{hookEventName='PreToolUse';permissionDecision='allow';permissionDecisionReason='Vault skill script (scoped auto-allow)'}}|ConvertTo-Json -Compress -Depth 5}",
+      "timeout": 15,
+      "statusMessage": "Vault: auto-allowing scoped skill script"
+    }
+  ]
+}
