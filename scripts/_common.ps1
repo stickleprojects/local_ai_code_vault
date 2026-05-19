@@ -127,6 +127,7 @@ function Get-VaultBodyValue {
         [Parameter(Mandatory)][string]$Key
     )
     if ($null -eq $Body) { return $null }
+    # Accept either hashtable/ordered dictionary (IDictionary) or object.
     if ($Body -is [System.Collections.IDictionary]) {
         if ($Body.Contains($Key)) { return $Body[$Key] }
         return $null
