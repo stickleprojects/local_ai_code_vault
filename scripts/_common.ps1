@@ -121,6 +121,22 @@ function Get-GitHead {
     "$sha".Trim()
 }
 
+function Get-VaultBodyValue {
+    param(
+        [Parameter(Mandatory)]$Body,
+        [Parameter(Mandatory)][string]$Key
+    )
+    if ($null -eq $Body) { return $null }
+    if ($Body -is [System.Collections.IDictionary]) {
+        if ($Body.Contains($Key)) { return $Body[$Key] }
+        if ($Body.PSObject.Methods.Name -contains 'ContainsKey' -and $Body.ContainsKey($Key)) { return $Body[$Key] }
+        return $null
+    }
+    $prop = $Body.PSObject.Properties[$Key]
+    if ($null -eq $prop) { return $null }
+    $prop.Value
+}
+
 function Get-VaultTokenEstimate {
     # APPROXIMATE token count. This is NOT Claude's tokenizer (that is
     # not available locally), so every number derived from it is an

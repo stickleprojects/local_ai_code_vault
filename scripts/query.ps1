@@ -50,18 +50,23 @@ if ($r.status -ne 200) {
     Stop-VaultWithError "query API returned HTTP $($r.status)" $VaultExit.ApiError
 }
 
-$results = @($r.body.results)
+$resultsValue = Get-VaultBodyValue -Body $r.body -Key 'results'
+$results = @()
+if ($null -ne $resultsValue) { $results = @($resultsValue) }
 
 # --- Savings estimate (honest upper bound; never present as exact) ----
 $returnedTokens = 0
-foreach ($hit in $results) { $returnedTokens += Get-VaultTokenEstimate ([string]$hit.code) }
+foreach ($hit in $results) {
+    $hitCode = Get-VaultBodyValue -Body $hit -Key 'code'
+    $returnedTokens += Get-VaultTokenEstimate ([string]$hitCode)
+}
 
 $baselineTokens = 0
 $filesCounted = 0
 $filesMissing = 0
 $seen = @{}
 foreach ($hit in $results) {
-    $rel = [string]$hit.path
+    $rel = [string](Get-VaultBodyValue -Body $hit -Key 'path')
     if ([string]::IsNullOrWhiteSpace($rel) -or $seen.ContainsKey($rel)) { continue }
     $seen[$rel] = $true
     $full = Join-Path $root $rel

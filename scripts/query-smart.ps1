@@ -64,21 +64,6 @@ function Invoke-JsonScript {
     [ordered]@{ code = $code; body = $obj }
 }
 
-function Get-BodyValue {
-    param(
-        [Parameter(Mandatory)]$Body,
-        [Parameter(Mandatory)][string]$Key
-    )
-    if ($null -eq $Body) { return $null }
-    if ($Body -is [hashtable]) {
-        if ($Body.ContainsKey($Key)) { return $Body[$Key] }
-        return $null
-    }
-    $prop = $Body.PSObject.Properties[$Key]
-    if ($null -eq $prop) { return $null }
-    return $prop.Value
-}
-
 function New-ZeroSavings {
     [ordered]@{
         returned_tokens       = 0
@@ -104,9 +89,9 @@ function Write-SearchOutcome {
     $results = @()
     $savings = New-ZeroSavings
     if ($null -ne $QueryBody) {
-        $countValue = Get-BodyValue -Body $QueryBody -Key 'count'
-        $resultsValue = Get-BodyValue -Body $QueryBody -Key 'results'
-        $savingsValue = Get-BodyValue -Body $QueryBody -Key 'savings'
+        $countValue = Get-VaultBodyValue -Body $QueryBody -Key 'count'
+        $resultsValue = Get-VaultBodyValue -Body $QueryBody -Key 'results'
+        $savingsValue = Get-VaultBodyValue -Body $QueryBody -Key 'savings'
 
         if ($null -ne $countValue) { $count = [int]$countValue }
         if ($null -ne $resultsValue) { $results = @($resultsValue) }
@@ -141,7 +126,7 @@ $queryCall = Invoke-JsonScript -ScriptName 'query.ps1' -PositionalArgs @($Query)
     Limit = $Limit
 }
 if ($queryCall.code -eq 0) {
-    $qCountValue = Get-BodyValue -Body $queryCall.body -Key 'count'
+    $qCountValue = Get-VaultBodyValue -Body $queryCall.body -Key 'count'
     $qCount = if ($null -ne $qCountValue) { [int]$qCountValue } else { 0 }
     if ($qCount -gt 0) {
         Write-SearchOutcome -UsedVault:$true -Reason $null -Message $null -QueryBody $queryCall.body
@@ -171,7 +156,7 @@ if ($queryCall.code -eq $VaultExit.NotRegistered) {
         Limit = $Limit
     }
     if ($retry.code -eq 0) {
-        $rCountValue = Get-BodyValue -Body $retry.body -Key 'count'
+        $rCountValue = Get-VaultBodyValue -Body $retry.body -Key 'count'
         $rCount = if ($null -ne $rCountValue) { [int]$rCountValue } else { 0 }
         if ($rCount -gt 0) {
             Write-SearchOutcome -UsedVault:$true -Reason $null -Message $null -QueryBody $retry.body `
