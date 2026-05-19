@@ -32,6 +32,24 @@ scripts by absolute path, and they take the target repo as an argument.
    `/vault-*` works in *any* repo) and records `VAULT_HOME` so it can
    find the scripts. Re-run it if you move/update the clone;
    `-Remove` uninstalls.
+
+   > ⚠️ **SECURITY WARNING — read this before using `-PermissionHook
+   > Install`.** By default Claude Code asks you to approve **every**
+   > `/vault-*` call. The optional `-PermissionHook Install` writes an
+   > auto-allow hook into your **global** `~/.claude/settings.json` so
+   > that PowerShell calls to vault scripts **run without asking you**.
+   > Everything else still prompts, but this **deliberately disables a
+   > safety check**. **If you turn this on, that is your choice and the
+   > risk is on you** — anything able to produce a matching command can
+   > then run vault scripts unprompted. The installer will **not** do
+   > this unless you explicitly opt in (interactive: you must type
+   > `yes`; or pass `-PermissionHook Install`); it is fail-closed, backs
+   > up `settings.json` first, and never disables your antivirus. The
+   > **safe default does nothing** — install the skill, try `/vault-*`
+   > with the prompt on, and only enable the bypass later (re-run with
+   > `-PermissionHook Install`) if you accept the trade-off.
+   > `install-skill.ps1 -Remove` removes the hook again. Full trade-off,
+   > the exact hook, and undo: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
 3. **Open the repo you want to search** in Claude Code (any repo,
    anywhere — it does not need this project's files).
 4. **Index it:** `/vault-index` (or, by hand from this clone,

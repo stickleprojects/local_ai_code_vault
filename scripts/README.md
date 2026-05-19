@@ -119,13 +119,45 @@ simply no-ops. Hooks carry a marker so `-Remove` only deletes
 vault-managed ones; a pre-existing non-vault hook is left untouched
 unless `-Force`. Requires `pwsh` on PATH at commit time.
 
-### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist]`
+### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist] [-SettingsPath <file>] [-PermissionHook Ask|Install|Skip] [-IgnoreAvBlock]`
 One-time setup so `/vault-*` works in **any** repo: copies `SKILL.md`
 to `<SkillsRoot>/vault/` (default `~/.claude/skills/vault/`) and records
 `VAULT_HOME` = this clone's root (persisted to the Windows User
 environment unless `-NoPersist`; on non-Windows it sets the process var
 and prints the profile line to add). Re-run after moving/updating the
-clone; `-Remove` uninstalls. Restart Claude Code afterwards.
+clone. `-Remove` uninstalls the skill **and** removes the
+permission-bypass hook (fail-safe: re-enables the prompt) — backs up
+`settings.json` first, drops only the `local_ai_code_vault` PreToolUse
+entry, keeps other hooks, leaves an unparseable file untouched; result
+adds `permission_hook_removed`, `settings_backup`. Restart Claude Code
+afterwards.
+
+`-PermissionHook` controls the per-call approval prompt (Claude Code
+otherwise prompts on **every** `/vault-*` call — a deliberate safety
+gate). `Install` pre-approves by merging a scoped `PreToolUse` hook
+(payload = `scripts/vault-permission-hook.json`) into `-SettingsPath`
+(default `~/.claude/settings.json`), backing it up first. **`Skip` is
+the explicit "install but DON'T grant the bypass" choice** — test
+`/vault-*` with the prompt on, then re-run with `-PermissionHook
+Install` later if you accept the trade-off. **Fail-closed:** the prompt
+is bypassed only on an explicit grant (this flag, or typing exactly
+`yes` at the interactive `Ask` prompt) that writes cleanly; `Ask`
+non-interactively, `Skip`, anything other than `yes`, malformed JSON,
+or any write error all leave the prompt in place. Result adds
+`permission_hook_present` / `_action`
+(`installed`/`present`/`skipped`/`failed`/`av-blocked`) / `_error` /
+`_hint`, `settings_path`, `settings_backup`. The skill install itself
+still succeeds (exit 0) regardless of the hook outcome.
+
+**Good AV citizen:** before writing the hook the installer runs a
+non-evasive probe (executes the real hook command once) to see if the
+machine's AV/AMSI blocks it. It never disables or circumvents the
+antivirus. If blocked it reports `av_blocks_hook` / `av_product` and
+`permission_hook_action = av-blocked`, keeps the prompt (asks when
+interactive), and points the user at adding their own AV exclusion.
+`-IgnoreAvBlock` is the explicit, informed override to install anyway
+(the non-interactive equivalent of "install anyway"). See
+[../docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).
 
 ### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
 One-time user-scope Copilot setup (no per-repo config): records
