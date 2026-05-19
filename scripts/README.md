@@ -184,6 +184,11 @@ asset (`copilot/instructions/vault-global.instructions.md`), and runs a
 post-install `vault-health.ps1` check. `-Remove` unregisters MCP +
 instruction entry and deletes the installed instruction file.
 
+This installer does **not** modify Claude permission-bypass settings.
+Per-call approval prompts in Claude are controlled only by
+`install-skill.ps1 -PermissionHook ...`, where the bypass is explicit,
+opt-in, and user-responsibility.
+
 `-RepoHooks` controls whether repo freshness hooks are installed during
 Copilot setup. `Ask` (default) prompts only in interactive runs; in
 non-interactive runs it safely skips. `Install` runs

@@ -10,6 +10,9 @@
    4) runs a post-install vault health check.
 
   This does not modify project repos and does not alter Claude setup.
+    It does not add or remove Claude permission-bypass hooks; approval
+    prompts for `/vault-*` in Claude are controlled only by
+    `install-skill.ps1 -PermissionHook ...`.
   It shares the same script contracts used by the Claude skill so both
   adapters stay aligned without duplicated vault logic.
 

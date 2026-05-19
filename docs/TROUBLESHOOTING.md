@@ -42,7 +42,7 @@ pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
 ```
 
 This is **fail-closed**: it writes the hook only on an explicit grant
-(that flag, or answering `y` to the interactive prompt) and backs up
+(that flag, or typing exactly `yes` at the interactive prompt) and backs up
 `settings.json` first. A non-interactive run, a `no`, a malformed
 `settings.json`, or any write error leaves the prompt **in place**
 (`permission_hook_action` = `skipped`/`failed`) — the security is never
