@@ -134,6 +134,12 @@ Equivalent by-hand invocations and sample output:
 [EXAMPLES.md](EXAMPLES.md). If anything fails:
 [TROUBLESHOOTING.md](TROUBLESHOOTING.md).
 
+Safety behavior note (shared with Copilot): when search detects an
+unindexed repo and vault is reachable, agents should prompt once and
+index by default unless you say `do not index`. If vault is down,
+indexing is declined, or semantic hits are empty, agents should fall
+back to normal workspace file search and state why vault was not used.
+
 ## Environment overrides (rarely needed)
 
 | var                   | default                    | used by                |

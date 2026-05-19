@@ -78,6 +78,72 @@ Install`.** By default Claude Code asks you to approve **every**
 The skill is pure delegation; all logic is in standalone, individually
 runnable scripts — contracts in [scripts/README.md](scripts/README.md).
 
+## Automatic agent use (typical)
+
+Most users will not type `/vault-*` directly. A more typical flow is:
+
+1. User asks for a code change in plain language.
+2. Claude/Copilot uses vault search/index tools behind the scenes to
+   gather relevant code context.
+3. Agent applies edits and tests with less broad file-searching.
+
+### Example 1: schema/property rename
+
+User prompt:
+
+`change customer.surname to customer.lastname everywhere and fix tests`
+
+Typical agent behavior with vault:
+
+1. Finds model definitions, DTOs, serializers, mappers, API handlers,
+   and tests that reference surname semantics.
+2. Updates code + tests in targeted files.
+3. Returns a normal edit summary.
+
+How savings would be displayed:
+
+- If savings are meaningful, include one line in search-style output:
+  `Upper-bound savings this query: 1320 tokens across 3 files (76%).`
+- If savings are zero/non-meaningful, omit the line (no noise).
+
+### Example 2: behavior change request
+
+User prompt:
+
+`add retry with exponential backoff to payment API calls and update tests`
+
+Typical agent behavior with vault:
+
+1. Locates existing retry/backoff utilities and payment call sites.
+2. Reuses project patterns for error handling/timeouts.
+3. Updates integration tests around retry behavior.
+
+How savings would be displayed:
+
+- If the query path returns measurable savings:
+  `Upper-bound savings this query: 940 tokens across 2 files (63%).`
+- If the agent did not run a vault query (or savings are zero), no
+  savings line is shown.
+
+Savings numbers are estimates and upper bounds; details are available
+via `/vault-savings` (Claude) or `vault_savings` (Copilot).
+
+## Search safety behavior (shared)
+
+Claude and Copilot now share the same search safety logic through a
+single script wrapper (`scripts/query-smart.ps1`):
+
+1. If vault is reachable but the repo is not indexed, the agent prompts
+   once with opt-out wording and indexes by default unless you say
+   `do not index`.
+2. If vault is unavailable, indexing is declined, or semantic search
+   returns no hits, the agent falls back to normal workspace file
+   search/read flow.
+3. In every fallback case, the user is told why vault was not used.
+
+This keeps vault preferred (for token/context efficiency) without
+blocking normal coding flow when vault cannot help.
+
 ## Shared Claude + Copilot architecture
 
 Claude and Copilot intentionally reuse the same runtime contracts:

@@ -115,6 +115,23 @@ bound of context tokens avoided this query. Appends one best-effort JSONL
 ledger event per call (stats failures never fail search). 404 → exit 5
 (skill offers `/vault-index`). Rendering for the user is the skill's job.
 
+### `query-smart.ps1 <Query> [Path] [-Limit N] [-DoNotIndex] [-Build]`
+
+Shared Claude+Copilot search orchestration wrapper:
+
+- Checks stack reachability first.
+- Runs semantic query.
+- If unregistered (`code:5`), auto-indexes by default and retries once
+  (unless `-DoNotIndex`, which forces fallback).
+- If stack is down, indexing is declined, or no semantic hits are
+  found, returns a **successful** payload with
+  `used_vault:false`, `fallback_reason`, `fallback_message`, and
+  `next_action:"workspace_search"` so callers can continue normal file
+  search/read flow and explain why vault was not used.
+
+Primary output keeps query-compatible fields:
+`{repo_id, query, count, results, savings, used_vault, ...}`.
+
 ### `vault-savings.ps1 [Path] [-Days N]`
 
 Aggregates query ledger events for the repo and returns all-time + recent

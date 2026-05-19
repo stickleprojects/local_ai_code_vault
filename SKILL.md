@@ -69,7 +69,7 @@ message**, not from the skill name alone.
 - For `search`, everything after the keyword is the query string.
 - **Never** reply "you ran /vault with no subcommand" when any of those
   keywords is present — that is the bug this section exists to prevent.
-  Treat it as "no subcommand" only when genuinely none is present *and*
+  Treat it as "no subcommand" only when genuinely none is present _and_
   there is no clear intent; then ask which one (single question), don't
   re-loop the same prompt.
 - Once resolved, act immediately per that row — in particular `index`
@@ -77,14 +77,14 @@ message**, not from the skill name alone.
 
 ## Commands
 
-| Command | Script | Then |
-|---|---|---|
-| `/vault-status` | `vault-health.ps1`, then `vault-status.ps1 <path>` | Report reachable/registered/stale; if `stale`, say which/how many files changed and offer `/vault-index -Incremental`; if not registered, offer `/vault-index`. |
-| `/vault-index` | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]` | **Run immediately — the explicit `/vault-index` invocation is the user's consent. Do NOT ask "want me to index?" and do NOT gate on a prior `/vault-status` check; indexing is non-destructive.** Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
-| `/vault-search <query>` | `query.ps1 "<query>" <path> [-Limit N]` | Format `results[]` as a readable list (path, line range, score, code). |
-| `/vault-savings` | `vault-savings.ps1 <path> [-Days N]` | Report estimate/upper-bound savings totals and recent-window rollup from the per-repo ledger. |
-| `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
-| `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
+| Command                 | Script                                                               | Then                                                                                                                                                                                                                                                                                                                                                        |
+| ----------------------- | -------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/vault-status`         | `vault-health.ps1`, then `vault-status.ps1 <path>`                   | Report reachable/registered/stale; if `stale`, say which/how many files changed and offer `/vault-index -Incremental`; if not registered, offer `/vault-index`.                                                                                                                                                                                             |
+| `/vault-index`          | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]`              | **Run immediately — the explicit `/vault-index` invocation is the user's consent. Do NOT ask "want me to index?" and do NOT gate on a prior `/vault-status` check; indexing is non-destructive.** Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
+| `/vault-search <query>` | `query-smart.ps1 "<query>" <path> [-Limit N] [-DoNotIndex] [-Build]` | Format `results[]` as a readable list (path, line range, score, code). If `savings.saved_tokens_upper > 0`, add exactly one concise line: `Upper-bound savings this query: <saved_tokens_upper> tokens across <files_counted> files (<pct_upper>%).`                                                                                                        |
+| `/vault-savings`        | `vault-savings.ps1 <path> [-Days N]`                                 | Report estimate/upper-bound savings totals and recent-window rollup from the per-repo ledger.                                                                                                                                                                                                                                                               |
+| `/vault-inspect`        | `vault-inspect.ps1 <path> [-Files] [-Language L]`                    | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for.                                                                                                                                                                                                                                                           |
+| `/vault-hooks`          | `install-git-hooks.ps1 <path> [-Remove]`                             | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking.                                                                                                                                                                                                                                                                          |
 
 Each script name above is invoked as `& "{{VAULT_SCRIPTS}}/<name>.ps1"`
 per the pattern at the top (call operator, literal post-install path,
@@ -98,11 +98,31 @@ codes. Read `code` from the JSON and act:
 - `0` — success. Format the result for the user.
 - `4` StackDown — the stack isn't up. Tell the user to run
   `docker compose up -d` (see `README_SETUP.md`); don't retry blindly.
-- `5` NotRegistered — offer to run `/vault-index`.
+- `5` NotRegistered — for `/vault-search`, prefer `query-smart.ps1`
+  which owns auto-index + fallback behavior. If `query-smart.ps1` was
+  not used, apply the same prompt/auto-index policy manually.
 - `3` NotGitRepo — explain the command must run inside a git repo.
 - `6` Docker — surface the script's message (often: build the indexer
   image with `index-repo.ps1 -Build`, or `docker logs` the container).
 - `2` / `7` — show the error; it states what to fix.
+
+For `/vault-search`, keep savings output low-noise: at most one summary
+line per response and only when `saved_tokens_upper > 0`. Do not print
+the full `basis` explanation unless the user asks for methodology.
+
+For `/vault-search` responses from `query-smart.ps1`:
+
+- If `used_vault` is `false`, state `fallback_message` and continue
+  with normal workspace file search/read flow.
+- If `used_vault` is `true`, proceed with vault results normally.
+
+Fallback behavior for normal coding tasks:
+
+- For search, rely on `query-smart.ps1` output (`used_vault`,
+  `fallback_reason`, `fallback_message`) to decide fallback and explain
+  why vault was not used.
+- Do not claim vault is required to proceed; it is preferred when
+  available, not mandatory.
 
 For `/vault-status`, always run `vault-health.ps1` first — if the stack
 is down, stop there with the restart guidance rather than reporting a
@@ -111,13 +131,12 @@ misleading "not registered".
 ## Notes
 
 - An explicit `/vault-*` command is itself the user's consent: act on
-  it directly, don't ask a yes/no confirmation first. "Offer
-  `/vault-index`" applies only to *other* commands hitting an
-  unregistered repo (`/vault-status`, or `code 5` from search) — never
-  to `/vault-index` itself.
+  it directly, don't ask a yes/no confirmation first. For unregistered
+  repos (`code 5`) while vault is reachable, prompt once with opt-out
+  wording and index by default unless the user says "do not index".
 - `repo_id` is derived solely by `repo-id.ps1`; treat it as opaque.
 - `/vault-index` background jobs: poll `index-status.ps1` until
   `done:true`; completion is reported only within the open session
   (documented limitation — no detached OS notification).
 - This skill performs no destructive action except `/vault-hooks
-  -Remove` (removes only vault-managed hooks).
+-Remove` (removes only vault-managed hooks).

@@ -74,6 +74,44 @@ def test_run_tool_builds_expected_args_for_vault_savings(monkeypatch):
     ]
 
 
+def test_run_tool_builds_expected_args_for_vault_search_smart(monkeypatch):
+    monkeypatch.setenv("VAULT_HOME", "/tmp/vault-home")
+    captured = {}
+
+    def fake_run(command, capture_output, text, check):
+        captured["command"] = command
+        return SimpleNamespace(stdout='{"ok":true,"code":0}', stderr="", returncode=0)
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    payload, code = server.run_tool(
+        "vault_search",
+        {
+            "query": "rename surname",
+            "path": "/repo",
+            "limit": 5,
+            "doNotIndex": True,
+            "build": True,
+        },
+    )
+
+    assert code == 0
+    assert payload["ok"] is True
+    expected_script = str(Path("/tmp/vault-home").resolve() / "scripts" / "query-smart.ps1")
+    assert captured["command"] == [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        expected_script,
+        "rename surname",
+        "-Path",
+        "/repo",
+        "-Limit",
+        "5",
+        "-DoNotIndex",
+        "-Build",
+    ]
+
+
 def test_run_tool_returns_error_for_unknown():
     payload, code = server.run_tool("unknown", {})
     assert code == 2

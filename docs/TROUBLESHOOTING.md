@@ -28,6 +28,17 @@ here.
 
 ## Common symptoms
 
+**Vault search did not run (or fell back to normal file search).**
+Shared search orchestration now uses `scripts/query-smart.ps1`:
+
+- If vault is reachable but the repo is unindexed, callers should prompt
+  once and index by default unless you explicitly say `do not index`.
+- If vault is unavailable, indexing is declined, or semantic hits are
+  empty, callers should continue normal workspace file search/read flow
+  and explain the reason (`fallback_message`).
+
+This is a safety measure: vault is preferred, not mandatory.
+
 **`/vault-*` says the skill can't find scripts / `VAULT_HOME` unset.**
 Run `pwsh -NoProfile -File scripts/install-skill.ps1` from your vault
 clone and **restart Claude Code**. `install-skill.ps1` persists
