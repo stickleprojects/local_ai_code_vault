@@ -338,6 +338,78 @@ Describe 'install-skill.ps1' {
         Test-Path $r.Json.vault_home | Should -BeTrue   # points at a real clone
     }
 
+    It 'fail-closed: default non-interactive run never bypasses the prompt' {
+        $root = Join-Path $TestDrive 'skills3'
+        $set  = Join-Path $TestDrive 'fc-default.json'
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set)
+        $r.Code | Should -Be 0
+        $r.Json.installed | Should -BeTrue                 # skill still installs
+        $r.Json.permission_hook_present | Should -BeOfType [bool]
+        $r.Json.permission_hook_present | Should -BeFalse  # security NOT bypassed
+        $r.Json.permission_hook_action  | Should -Be 'skipped'
+        $r.Json.permission_hook_hint    | Should -Not -BeNullOrEmpty
+        Test-Path $set | Should -BeFalse                   # settings.json untouched
+    }
+
+    It 'explicit -PermissionHook Install pre-approves, idempotently, preserving other keys' {
+        $root = Join-Path $TestDrive 'skills4'
+        $set  = Join-Path $TestDrive 'fc-install.json'
+        Set-Content $set '{"model":"opus","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo hi"}]}]}}'
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
+        $r.Code | Should -Be 0
+        $r.Json.permission_hook_action  | Should -Be 'installed'
+        $r.Json.permission_hook_present | Should -BeTrue
+        $r.Json.settings_backup         | Should -Not -BeNullOrEmpty
+        $j = Get-Content $set -Raw | ConvertFrom-Json
+        $j.model | Should -Be 'opus'                        # existing key kept
+        $j.hooks.PreToolUse.Count | Should -Be 2            # existing hook kept + ours
+        # second run must not duplicate
+        $r2 = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
+        $r2.Json.permission_hook_action | Should -Be 'present'
+        (Get-Content $set -Raw | ConvertFrom-Json).hooks.PreToolUse.Count | Should -Be 2
+    }
+
+    It 'fail-closed: a malformed settings.json is left intact and the prompt stays' {
+        $root = Join-Path $TestDrive 'skills5'
+        $set  = Join-Path $TestDrive 'fc-bad.json'
+        Set-Content $set '{ not : valid json' -NoNewline
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
+        $r.Code | Should -Be 0                              # skill install still succeeds
+        $r.Json.permission_hook_present | Should -BeFalse   # NOT bypassed on error
+        $r.Json.permission_hook_action  | Should -Be 'failed'
+        $r.Json.permission_hook_error   | Should -Not -BeNullOrEmpty
+        (Get-Content $set -Raw) | Should -Be '{ not : valid json'   # untouched
+    }
+
+    It 'good citizen: AV-blocked + non-interactive + no override fails gracefully (no bypass)' {
+        $root = Join-Path $TestDrive 'skills6'
+        $set  = Join-Path $TestDrive 'av-block.json'
+        $env:VAULT_TEST_FORCE_AV_BLOCK = '1'
+        try {
+            $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
+        } finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
+        $r.Code | Should -Be 0                              # skill install still ok
+        $r.Json.av_blocks_hook          | Should -BeTrue
+        $r.Json.permission_hook_present | Should -BeFalse   # NOT bypassed
+        $r.Json.permission_hook_action  | Should -Be 'av-blocked'
+        $r.Json.permission_hook_error   | Should -Not -BeNullOrEmpty
+        Test-Path $set | Should -BeFalse                    # settings.json untouched
+    }
+
+    It 'good citizen: -IgnoreAvBlock is an explicit override that installs despite the AV block' {
+        $root = Join-Path $TestDrive 'skills7'
+        $set  = Join-Path $TestDrive 'av-override.json'
+        $env:VAULT_TEST_FORCE_AV_BLOCK = '1'
+        try {
+            $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install', '-IgnoreAvBlock')
+        } finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
+        $r.Code | Should -Be 0
+        $r.Json.av_blocks_hook          | Should -BeTrue    # still reported honestly
+        $r.Json.permission_hook_action  | Should -Be 'installed'
+        $r.Json.permission_hook_present | Should -BeTrue
+        (Get-Content $set -Raw) | Should -Match 'local_ai_code_vault'
+    }
+
     It '-Remove deletes the installed skill' {
         $root = Join-Path $TestDrive 'skills2'
         Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist') | Out-Null
@@ -345,6 +417,35 @@ Describe 'install-skill.ps1' {
         $r.Code | Should -Be 0
         $r.Json.removed | Should -BeTrue
         Test-Path (Join-Path $root 'vault') | Should -BeFalse
+    }
+
+    It '-Remove also removes the permission hook, backs up, and keeps other hooks' {
+        $root = Join-Path $TestDrive 'skills8'
+        $set  = Join-Path $TestDrive 'rm-hook.json'
+        Set-Content $set '{"model":"x","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo keepme"}]}]}}'
+        Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install') | Out-Null
+        (Get-Content $set -Raw) | Should -Match 'local_ai_code_vault'   # installed
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.removed                 | Should -BeTrue
+        $r.Json.permission_hook_removed | Should -BeTrue
+        $r.Json.settings_backup         | Should -Not -BeNullOrEmpty
+        $j = Get-Content $set -Raw | ConvertFrom-Json
+        (Get-Content $set -Raw) | Should -Not -Match 'local_ai_code_vault'   # ours gone
+        $j.model | Should -Be 'x'                                            # other keys kept
+        $j.hooks.PreToolUse.Count | Should -Be 1                             # other hook kept
+        $j.hooks.PreToolUse[0].hooks[0].command | Should -Be 'echo keepme'
+    }
+
+    It '-Remove is a no-op (no backup) when no vault hook is present' {
+        $root = Join-Path $TestDrive 'skills9'
+        $set  = Join-Path $TestDrive 'rm-none.json'
+        Set-Content $set '{"model":"opus"}' -NoNewline
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.permission_hook_removed | Should -BeFalse
+        $r.Json.settings_backup         | Should -BeNullOrEmpty
+        (Get-Content $set -Raw) | Should -Be '{"model":"opus"}'             # untouched
     }
 }
 
