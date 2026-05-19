@@ -127,7 +127,7 @@ switch ($a[0]) {
 
 Describe 'repo-id.ps1 — AD-2 sacred contract' {
     BeforeAll { $script:repo = New-TempGitRepo }
-    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'emits a stable {repo_id, repo_root, slug} JSON object' {
         $r = Invoke-Script 'repo-id.ps1' @('-Path', $repo)
@@ -139,7 +139,7 @@ Describe 'repo-id.ps1 — AD-2 sacred contract' {
     It 'is deterministic and identical from a subdirectory' {
         $sub = Join-Path $repo 'pkg'; New-Item -ItemType Directory -Path $sub | Out-Null
         $a = (Invoke-Script 'repo-id.ps1' @('-Path', $repo, '-Raw')).Raw.Trim()
-        $b = (Invoke-Script 'repo-id.ps1' @('-Path', $sub,  '-Raw')).Raw.Trim()
+        $b = (Invoke-Script 'repo-id.ps1' @('-Path', $sub, '-Raw')).Raw.Trim()
         $a | Should -Not -BeNullOrEmpty
         $b | Should -Be $a
     }
@@ -157,15 +157,18 @@ Describe 'repo-id.ps1 — AD-2 sacred contract' {
 Describe 'vault-health.ps1' {
     It 'reports reachable + fields on 200' {
         $stub = Start-StubApi @(@{ match = '^/api/status$'; status = 200; body = @{
-            status = 'ok'; api_version = '0.1.0'; embed_model = 'nomic-embed-code'
-            embed_dim = 3584; qdrant_connected = $true } })
+                    status = 'ok'; api_version = '0.1.0'; embed_model = 'nomic-embed-code'
+                    embed_dim = 3584; qdrant_connected = $true 
+                } 
+            })
         try {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'vault-health.ps1' @()
             $r.Code | Should -Be 0
             $r.Json.reachable | Should -BeTrue
             $r.Json.embed_dim | Should -Be 3584
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'exits 4 (StackDown) when nothing is listening' {
@@ -174,13 +177,14 @@ Describe 'vault-health.ps1' {
             $r = Invoke-Script 'vault-health.ps1' @()
             $r.Code | Should -Be 4
             $r.Json.ok | Should -BeFalse
-        } finally { $env:VAULT_API_BASE = $null }
+        }
+        finally { $env:VAULT_API_BASE = $null }
     }
 }
 
 Describe 'vault-status.ps1 — registration & staleness' {
     BeforeAll { $script:repo = New-TempGitRepo }
-    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'registered:false on 404' {
         $stub = Start-StubApi @(@{ match = '^/api/repos/'; status = 404; body = @{ detail = 'no' } })
@@ -190,20 +194,24 @@ Describe 'vault-status.ps1 — registration & staleness' {
             $r.Code | Should -Be 0
             $r.Json.registered | Should -BeFalse
             $r.Json.head_sha   | Should -Not -BeNullOrEmpty
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'stale:false when indexed SHA == HEAD' {
         $head = (& git -C $repo rev-parse HEAD).Trim()
         $stub = Start-StubApi @(@{ match = '^/api/repos/'; status = 200; body = @{
-            repo_id = 'x'; indexed_sha = $head; indexed_at = '2026-01-01T00:00:00Z' } })
+                    repo_id = 'x'; indexed_sha = $head; indexed_at = '2026-01-01T00:00:00Z' 
+                } 
+            })
         try {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'vault-status.ps1' @('-Path', $repo)
             $r.Json.registered | Should -BeTrue
             $r.Json.stale | Should -BeFalse
             $r.Json.changed_files | Should -Be @()
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'stale:true + changed_files when indexed SHA is an older commit' {
@@ -211,19 +219,22 @@ Describe 'vault-status.ps1 — registration & staleness' {
         'two' | Set-Content (Join-Path $repo 'file2.py')
         & git -C $repo add -A; & git -C $repo commit -qm 'B'
         $stub = Start-StubApi @(@{ match = '^/api/repos/'; status = 200; body = @{
-            repo_id = 'x'; indexed_sha = $first; indexed_at = '2026-01-01T00:00:00Z' } })
+                    repo_id = 'x'; indexed_sha = $first; indexed_at = '2026-01-01T00:00:00Z' 
+                } 
+            })
         try {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'vault-status.ps1' @('-Path', $repo)
             $r.Json.stale | Should -BeTrue
             $r.Json.changed_files | Should -Contain 'file2.py'
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 }
 
 Describe 'query.ps1' {
     BeforeAll { $script:repo = New-TempGitRepo }
-    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'exits 2 (Usage) on a blank query' {
         # ' ' binds past Mandatory[string]; the script's own guard fires.
@@ -237,29 +248,36 @@ Describe 'query.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query.ps1' @('find login', '-Path', $repo)
             $r.Code | Should -Be 5
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'passes results through on 200' {
         $stub = Start-StubApi @(@{ match = '^/api/query/'; status = 200; body = @{
-            repo_id = 'x'; query = 'q'; results = @(@{ path = 'a.py'; language = 'python'
-            start_line = 1; end_line = 2; code = 'def f(): ...'; score = 0.5 }) } })
+                    repo_id = 'x'; query = 'q'; results = @(@{ path = 'a.py'; language = 'python'
+                            start_line = 1; end_line = 2; code = 'def f(): ...'; score = 0.5 
+                        }) 
+                } 
+            })
         try {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
             $r.Json.count | Should -Be 1
             $r.Json.results[0].path | Should -Be 'a.py'
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'emits savings and appends one ledger event on 200' {
         $statsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vault-stats-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
         New-Item -ItemType Directory -Path $statsDir | Out-Null
         $stub = Start-StubApi @(@{ match = '^/api/query/'; status = 200; body = @{
-            repo_id = 'x'; query = 'q'; results = @(
-                @{ path = 'file1.py'; language = 'python'; start_line = 1; end_line = 1; code = 'one'; score = 0.9 }
-            ) } })
+                    repo_id = 'x'; query = 'q'; results = @(
+                        @{ path = 'file1.py'; language = 'python'; start_line = 1; end_line = 1; code = 'one'; score = 0.9 }
+                    ) 
+                } 
+            })
         try {
             $env:VAULT_API_BASE = $stub.Base
             $env:VAULT_STATS_DIR = $statsDir
@@ -276,7 +294,8 @@ Describe 'query.ps1' {
             $event = $lines[0] | ConvertFrom-Json
             $event.repo_id | Should -Be $repoId
             $event.returned_tokens | Should -BeGreaterThan 0
-        } finally {
+        }
+        finally {
             $env:VAULT_API_BASE = $null
             $env:VAULT_STATS_DIR = $null
             Stop-StubApi $stub
@@ -287,7 +306,7 @@ Describe 'query.ps1' {
 
 Describe 'vault-savings.ps1' {
     BeforeAll { $script:repo = New-TempGitRepo }
-    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'aggregates all-time and window totals from the ledger' {
         $statsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vault-stats-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -318,7 +337,8 @@ Describe 'vault-savings.ps1' {
             $r.Json.window.queries | Should -Be 1
             $r.Json.window.returned_tokens | Should -Be 10
             $r.Json.window.saved_tokens_upper | Should -Be 90
-        } finally {
+        }
+        finally {
             $env:VAULT_STATS_DIR = $null
             Remove-Item -Recurse -Force $statsDir -ErrorAction SilentlyContinue
         }
@@ -327,25 +347,30 @@ Describe 'vault-savings.ps1' {
 
 Describe 'vault-inspect.ps1 — AD-9 read-only' {
     BeforeAll { $script:repo = New-TempGitRepo }
-    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'exits 5 when stats 404' {
         $stub = Start-StubApi @(@{ match = '/stats$'; status = 404; body = @{ detail = 'no' } })
         try {
             $env:VAULT_API_BASE = $stub.Base
             (Invoke-Script 'vault-inspect.ps1' @('-Path', $repo)).Code | Should -Be 5
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 
     It 'returns stats and (with -Files) a filtered inventory' {
         $stub = Start-StubApi @(
             @{ match = '/stats$'; status = 200; body = @{ repo_id = 'x'; indexed_sha = 's'
-               indexed_at = 't'; file_count = 2; chunk_count = 5; skipped_count = 1
-               languages = @(@{ language = 'python'; files = 2; chunks = 5 }) } },
+                    indexed_at = 't'; file_count = 2; chunk_count = 5; skipped_count = 1
+                    languages = @(@{ language = 'python'; files = 2; chunks = 5 }) 
+                } 
+            },
             @{ match = '/files$'; status = 200; body = @{ repo_id = 'x'; total = 2; offset = 0
-               limit = 100; files = @(
-                 @{ path = 'a.py'; language = 'python'; chunk_count = 3 },
-                 @{ path = 'b.ts'; language = 'typescript'; chunk_count = 2 }) } }
+                    limit = 100; files = @(
+                        @{ path = 'a.py'; language = 'python'; chunk_count = 3 },
+                        @{ path = 'b.ts'; language = 'typescript'; chunk_count = 2 }) 
+                } 
+            }
         )
         try {
             $env:VAULT_API_BASE = $stub.Base
@@ -354,13 +379,14 @@ Describe 'vault-inspect.ps1 — AD-9 read-only' {
             $r.Json.stats.chunk_count | Should -Be 5
             $r.Json.files.returned | Should -Be 1
             $r.Json.files.files[0].path | Should -Be 'a.py'
-        } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
 }
 
 Describe 'install-git-hooks.ps1' {
     BeforeEach { $script:repo = New-TempGitRepo }
-    AfterEach  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+    AfterEach { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'installs LF, marker-bearing post-commit & post-merge hooks' {
         $r = Invoke-Script 'install-git-hooks.ps1' @('-Path', $repo)
@@ -411,7 +437,7 @@ Describe 'install-skill.ps1' {
 
     It 'fail-closed: default non-interactive run never bypasses the prompt' {
         $root = Join-Path $TestDrive 'skills3'
-        $set  = Join-Path $TestDrive 'fc-default.json'
+        $set = Join-Path $TestDrive 'fc-default.json'
         $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set)
         $r.Code | Should -Be 0
         $r.Json.installed | Should -BeTrue                 # skill still installs
@@ -434,7 +460,8 @@ Describe 'install-skill.ps1' {
             $r.Json.repo_hooks_repo_root | Should -Be $repo
             Test-Path (Join-Path $repo '.git/hooks/post-commit') | Should -BeTrue
             Test-Path (Join-Path $repo '.git/hooks/post-merge') | Should -BeTrue
-        } finally {
+        }
+        finally {
             Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
         }
     }
@@ -453,7 +480,7 @@ Describe 'install-skill.ps1' {
 
     It 'explicit -PermissionHook Install pre-approves, idempotently, preserving other keys' {
         $root = Join-Path $TestDrive 'skills4'
-        $set  = Join-Path $TestDrive 'fc-install.json'
+        $set = Join-Path $TestDrive 'fc-install.json'
         Set-Content $set '{"model":"opus","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo hi"}]}]}}'
         $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
         $r.Code | Should -Be 0
@@ -471,7 +498,7 @@ Describe 'install-skill.ps1' {
 
     It 'fail-closed: a malformed settings.json is left intact and the prompt stays' {
         $root = Join-Path $TestDrive 'skills5'
-        $set  = Join-Path $TestDrive 'fc-bad.json'
+        $set = Join-Path $TestDrive 'fc-bad.json'
         Set-Content $set '{ not : valid json' -NoNewline
         $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
         $r.Code | Should -Be 0                              # skill install still succeeds
@@ -483,11 +510,12 @@ Describe 'install-skill.ps1' {
 
     It 'good citizen: AV-blocked + non-interactive + no override fails gracefully (no bypass)' {
         $root = Join-Path $TestDrive 'skills6'
-        $set  = Join-Path $TestDrive 'av-block.json'
+        $set = Join-Path $TestDrive 'av-block.json'
         $env:VAULT_TEST_FORCE_AV_BLOCK = '1'
         try {
             $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install')
-        } finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
+        }
+        finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
         $r.Code | Should -Be 0                              # skill install still ok
         $r.Json.av_blocks_hook          | Should -BeTrue
         $r.Json.permission_hook_present | Should -BeFalse   # NOT bypassed
@@ -498,11 +526,12 @@ Describe 'install-skill.ps1' {
 
     It 'good citizen: -IgnoreAvBlock is an explicit override that installs despite the AV block' {
         $root = Join-Path $TestDrive 'skills7'
-        $set  = Join-Path $TestDrive 'av-override.json'
+        $set = Join-Path $TestDrive 'av-override.json'
         $env:VAULT_TEST_FORCE_AV_BLOCK = '1'
         try {
             $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install', '-IgnoreAvBlock')
-        } finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
+        }
+        finally { Remove-Item Env:VAULT_TEST_FORCE_AV_BLOCK -ErrorAction SilentlyContinue }
         $r.Code | Should -Be 0
         $r.Json.av_blocks_hook          | Should -BeTrue    # still reported honestly
         $r.Json.permission_hook_action  | Should -Be 'installed'
@@ -521,7 +550,7 @@ Describe 'install-skill.ps1' {
 
     It '-Remove also removes the permission hook, backs up, and keeps other hooks' {
         $root = Join-Path $TestDrive 'skills8'
-        $set  = Join-Path $TestDrive 'rm-hook.json'
+        $set = Join-Path $TestDrive 'rm-hook.json'
         Set-Content $set '{"model":"x","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo keepme"}]}]}}'
         Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install') | Out-Null
         (Get-Content $set -Raw) | Should -Match 'local_ai_code_vault'   # installed
@@ -539,7 +568,7 @@ Describe 'install-skill.ps1' {
 
     It '-Remove is a no-op (no backup) when no vault hook is present' {
         $root = Join-Path $TestDrive 'skills9'
-        $set  = Join-Path $TestDrive 'rm-none.json'
+        $set = Join-Path $TestDrive 'rm-none.json'
         Set-Content $set '{"model":"opus"}' -NoNewline
         $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-Remove')
         $r.Code | Should -Be 0
@@ -582,7 +611,8 @@ Describe 'install-copilot.ps1' {
             $r.Json.repo_hooks_repo_root | Should -Be $repo
             Test-Path (Join-Path $repo '.git/hooks/post-commit') | Should -BeTrue
             Test-Path (Join-Path $repo '.git/hooks/post-merge') | Should -BeTrue
-        } finally {
+        }
+        finally {
             Remove-Item -Recurse -Force $repo -ErrorAction SilentlyContinue
         }
     }
@@ -664,7 +694,8 @@ Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLi
             $r = Invoke-Script 'index-repo.ps1' @('-Path', $repo)
             $r.Code | Should -Be 6
             $r.Json.error | Should -Match 'not found'
-        } finally { $env:VAULT_FAKE_IMAGE_MISSING = $null }
+        }
+        finally { $env:VAULT_FAKE_IMAGE_MISSING = $null }
     }
 
     It 'index-repo.ps1 -Rebuild forces a build even when the image exists' {
@@ -676,7 +707,8 @@ Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLi
             $r = Invoke-Script 'index-repo.ps1' @('-Path', $repo, '-Rebuild')
             $r.Code | Should -Be 6
             $r.Json.error | Should -Match 'build failed'
-        } finally { $env:VAULT_FAKE_BUILD_FAIL = $null }
+        }
+        finally { $env:VAULT_FAKE_BUILD_FAIL = $null }
     }
 
     It 'index-repo.ps1 -Rebuild then runs normally when the build succeeds' {
@@ -713,6 +745,7 @@ Describe 'docker-backed scripts (Linux/CI — shimmed docker)' -Skip:(-not $IsLi
             $r = Invoke-Script 'index-status.ps1' @('ghost')
             $r.Json.state | Should -Be 'gone'
             $r.Json.done | Should -BeTrue
-        } finally { $env:VAULT_FAKE_INSPECT = $null }
+        }
+        finally { $env:VAULT_FAKE_INSPECT = $null }
     }
 }

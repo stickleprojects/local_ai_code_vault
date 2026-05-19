@@ -8,15 +8,15 @@ here.
 
 ## By exit code
 
-| code | name | What it means → do this |
-|---|---|---|
-| 0 | Ok | success |
-| 2 | Usage | bad/missing arguments — the `error` field states what to fix |
-| 3 | NotGitRepo | path missing or not inside a git work tree — run from inside a repo, or `git init` |
-| 4 | StackDown | vault API unreachable — `docker compose up -d` (see [SETUP.md](SETUP.md)); don't retry blindly |
-| 5 | NotRegistered | repo not indexed yet — run `/vault-index` (or `index-repo.ps1`) |
-| 6 | Docker | docker missing / indexer image missing / indexer failed — see below |
-| 7 | ApiError | API reachable but returned non-2xx — surface the `error`; check `docker compose logs api` |
+| code | name          | What it means → do this                                                                        |
+| ---- | ------------- | ---------------------------------------------------------------------------------------------- |
+| 0    | Ok            | success                                                                                        |
+| 2    | Usage         | bad/missing arguments — the `error` field states what to fix                                   |
+| 3    | NotGitRepo    | path missing or not inside a git work tree — run from inside a repo, or `git init`             |
+| 4    | StackDown     | vault API unreachable — `docker compose up -d` (see [SETUP.md](SETUP.md)); don't retry blindly |
+| 5    | NotRegistered | repo not indexed yet — run `/vault-index` (or `index-repo.ps1`)                                |
+| 6    | Docker        | docker missing / indexer image missing / indexer failed — see below                            |
+| 7    | ApiError      | API reachable but returned non-2xx — surface the `error`; check `docker compose logs api`      |
 
 ## Common symptoms
 
@@ -32,7 +32,7 @@ PowerShell-tool permission matcher works on the parsed AST, so a
 matches and cannot suppress the prompt. The fix is a **scoped
 `PreToolUse` hook** in your **user** settings
 `~/.claude/settings.json` (user-level, not the project's
-`.claude/settings.json` — the skill runs from *other* repos). This is
+`.claude/settings.json` — the skill runs from _other_ repos). This is
 a **one-time, global** step; it is not per-repo.
 
 **Easiest:** let the installer pre-approve it (explicit grant only):
@@ -51,7 +51,7 @@ session start).
 
 **Good antivirus citizen.** Some AV products (e.g. Bitdefender, or
 Defender via AMSI) flag the auto-allow hook. We deal with this
-*honestly and without ever weakening your antivirus*:
+_honestly and without ever weakening your antivirus_:
 
 - The hook command is kept in a **data file**
   (`scripts/vault-permission-hook.json`), never inlined into a `.ps1`,
@@ -66,10 +66,10 @@ Defender via AMSI) flag the auto-allow hook. We deal with this
   Interactively it asks; non-interactively it declines.
 
 The sanctioned fix is for **you** to allowlist it in your AV (we never
-do this for you). In Bitdefender: *Protection → Antivirus → Settings →
-Manage exceptions → Add an exception* for your vault clone's `scripts`
+do this for you). In Bitdefender: _Protection → Antivirus → Settings →
+Manage exceptions → Add an exception_ for your vault clone's `scripts`
 folder and for `~/.claude/settings.json` (and, if AMSI-scanned,
-re-allow the blocked item from *Notifications*). Then re-run
+re-allow the blocked item from _Notifications_). Then re-run
 `-PermissionHook Install`. To proceed despite the block (you accept it
 may be quarantined until you add the exception), pass the explicit
 override:
@@ -132,7 +132,7 @@ pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
 ```
 
 **Undo / remove the permission hook.** `install-skill.ps1 -Remove`
-uninstalls the *skill* **and removes the pre-approval hook** (fail-safe
+uninstalls the _skill_ **and removes the pre-approval hook** (fail-safe
 — this re-enables the prompt). It backs up `settings.json` first,
 drops only the `hooks.PreToolUse` entry whose `command` contains
 `local_ai_code_vault`, and leaves every other hook intact; an

@@ -76,10 +76,10 @@ param(
     [switch]$Remove,
     [switch]$NoPersist,
     [string]$SettingsPath = (Join-Path ([Environment]::GetFolderPath('UserProfile')) '.claude/settings.json'),
-    [ValidateSet('Ask','Install','Skip')]
+    [ValidateSet('Ask', 'Install', 'Skip')]
     [string]$PermissionHook = 'Ask',
     [switch]$IgnoreAvBlock,
-    [ValidateSet('Ask','Install','Skip')]
+    [ValidateSet('Ask', 'Install', 'Skip')]
     [string]$RepoHooks = 'Ask',
     [string]$RepoPath = '.'
 )
@@ -87,9 +87,9 @@ param(
 . "$PSScriptRoot/_common.ps1"
 
 $cloneRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Path
-$skillDir  = Join-Path $SkillsRoot 'vault'
-$dest      = Join-Path $skillDir 'SKILL.md'
-$source    = Join-Path $cloneRoot 'SKILL.md'
+$skillDir = Join-Path $SkillsRoot 'vault'
+$dest = Join-Path $skillDir 'SKILL.md'
+$source = Join-Path $cloneRoot 'SKILL.md'
 
 function Remove-VaultPermissionHook {
     # Fail-SAFE: removing the pre-approval re-enables the prompt (more
@@ -125,7 +125,8 @@ function Remove-VaultPermissionHook {
     Copy-Item -LiteralPath $Path -Destination $backup -Force
     if ($kept.Count -gt 0) {
         $hooks['PreToolUse'] = @($kept)
-    } else {
+    }
+    else {
         $null = $hooks.Remove('PreToolUse')
         if ($hooks.Count -eq 0) { $null = $settings.Remove('hooks') }
     }
@@ -144,21 +145,23 @@ if ($Remove) {
     catch { $rh = @{ removed = $false; backup = $null; error = $_.Exception.Message } }
     $rhErr = if ($rh.ContainsKey('error') -and $rh['error']) { [string]$rh['error'] } else { $null }
     Write-VaultResult ([ordered]@{
-        removed                 = $true
-        skill_dir               = $skillDir
-        was_present             = [bool]$existed
-        settings_path           = $SettingsPath
-        settings_backup         = $rh.backup
-        permission_hook_removed = [bool]$rh.removed
-        permission_hook_error   = $rhErr
-        note                    = if ($rh.removed) {
-            'Permission pre-approval REMOVED: Claude Code will prompt on every /vault-* call again. Restart Claude Code.'
-        } elseif ($rhErr) {
-            "Skill removed. Permission hook NOT removed: $rhErr"
-        } else {
-            'Skill removed. No vault permission hook was present in settings.json (nothing to revert).'
-        }
-    }) 0
+            removed                 = $true
+            skill_dir               = $skillDir
+            was_present             = [bool]$existed
+            settings_path           = $SettingsPath
+            settings_backup         = $rh.backup
+            permission_hook_removed = [bool]$rh.removed
+            permission_hook_error   = $rhErr
+            note                    = if ($rh.removed) {
+                'Permission pre-approval REMOVED: Claude Code will prompt on every /vault-* call again. Restart Claude Code.'
+            }
+            elseif ($rhErr) {
+                "Skill removed. Permission hook NOT removed: $rhErr"
+            }
+            else {
+                'Skill removed. No vault permission hook was present in settings.json (nothing to revert).'
+            }
+        }) 0
 }
 
 if (-not (Test-Path -LiteralPath $source)) {
@@ -175,8 +178,8 @@ Copy-Item -LiteralPath $source -Destination $dest -Force
 # only the installed copy gets the machine-specific path. .Replace() is a
 # literal (non-regex) substitution — safe for Windows backslash paths.
 $scriptsDir = (Resolve-Path -LiteralPath $PSScriptRoot).Path
-$skillText  = [IO.File]::ReadAllText($dest)
-$skillText  = $skillText.Replace('{{VAULT_SCRIPTS}}', $scriptsDir)
+$skillText = [IO.File]::ReadAllText($dest)
+$skillText = $skillText.Replace('{{VAULT_SCRIPTS}}', $scriptsDir)
 if ($skillText -match '\{\{VAULT_SCRIPTS\}\}') {
     Stop-VaultWithError "placeholder substitution failed in $dest" $VaultExit.Usage
 }
@@ -191,7 +194,8 @@ if (-not $NoPersist) {
     if ($IsWindows) {
         [Environment]::SetEnvironmentVariable('VAULT_HOME', $cloneRoot, 'User')
         $persisted = $true
-    } else {
+    }
+    else {
         $profileHint = "export VAULT_HOME='$cloneRoot'   # add to ~/.bashrc or ~/.zshrc"
     }
 }
@@ -228,7 +232,7 @@ function Set-VaultPermissionHook {
     if ($dir -and -not (Test-Path -LiteralPath $dir)) {
         $null = New-Item -ItemType Directory -Force -Path $dir
     }
-    $backup   = $null
+    $backup = $null
     $settings = @{}
     if (Test-Path -LiteralPath $Path) {
         $txt = [IO.File]::ReadAllText($Path)
@@ -273,7 +277,8 @@ function Install-VaultRepoHooks {
     $raw = $null
     try {
         $raw = & "$hookScript" -Path $Path 2>$null
-    } catch {
+    }
+    catch {
         return @{ action = 'failed'; error = $_.Exception.Message; repo_root = $null }
     }
     $code = $LASTEXITCODE
@@ -298,9 +303,10 @@ function Get-AvProduct {
     if (-not $IsWindows) { return $null }
     try {
         $names = Get-CimInstance -Namespace 'root/SecurityCenter2' -ClassName AntiVirusProduct -ErrorAction Stop |
-                 Select-Object -ExpandProperty displayName -ErrorAction Stop
+        Select-Object -ExpandProperty displayName -ErrorAction Stop
         if ($names) { return ((@($names) | Sort-Object -Unique) -join ', ') }
-    } catch { }
+    }
+    catch { }
     return $null
 }
 
@@ -318,14 +324,16 @@ function Test-AvBlocksHook {
     if (-not (Test-Path -LiteralPath $hookAsset)) { return @{ blocked = $false; detail = $null } }
     try {
         $tmpl = (Get-Content -LiteralPath $hookAsset -Raw) | ConvertFrom-Json
-        $cmd  = [string]$tmpl.hooks[0].command
-    } catch { return @{ blocked = $false; detail = $null } }
+        $cmd = [string]$tmpl.hooks[0].command
+    }
+    catch { return @{ blocked = $false; detail = $null } }
     if ([string]::IsNullOrWhiteSpace($cmd)) { return @{ blocked = $false; detail = $null } }
     $sample = @{ tool_input = @{ command = '& "X:\local_ai_code_vault\scripts/probe.ps1"' } } | ConvertTo-Json -Compress
     try {
-        $out  = $sample | & pwsh -NoProfile -Command $cmd 2>&1
+        $out = $sample | & pwsh -NoProfile -Command $cmd 2>&1
         $code = $LASTEXITCODE
-    } catch {
+    }
+    catch {
         return @{ blocked = $true; detail = "probe could not run: $($_.Exception.Message)" }
     }
     $text = ($out | Out-String)
@@ -338,21 +346,22 @@ function Test-AvBlocksHook {
     return @{ blocked = $false; detail = $null }
 }
 
-$permHookPresent   = Test-VaultPermissionHook -Path $SettingsPath
+$permHookPresent = Test-VaultPermissionHook -Path $SettingsPath
 $permHookInstalled = $false
-$settingsBackup    = $null
-$permHookError     = $null
-$avProduct         = $null
-$avBlocksHook      = $false
-$interactive       = (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
+$settingsBackup = $null
+$permHookError = $null
+$avProduct = $null
+$avBlocksHook = $false
+$interactive = (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
 # Exact command to enable the bypass later (copy-pasteable).
-$reRun             = "pwsh -NoProfile -File `"$PSCommandPath`" -PermissionHook Install"
+$reRun = "pwsh -NoProfile -File `"$PSCommandPath`" -PermissionHook Install"
 
 $desired = $PermissionHook
 if ($desired -eq 'Ask') {
     if ($permHookPresent) {
         $desired = 'Skip'                       # already approved — nothing to ask
-    } elseif ($interactive) {
+    }
+    elseif ($interactive) {
         Write-Host ''
         Write-Host '=============  SECURITY DECISION - THIS ONE IS ON YOU  ============='
         Write-Host 'By default Claude Code asks you to APPROVE EVERY /vault-* call.'
@@ -374,22 +383,24 @@ if ($desired -eq 'Ask') {
         if ($desired -eq 'Skip') {
             Write-Host 'Keeping the approval prompt ON. Re-run the command above when (if) you want the bypass.'
         }
-    } else {
+    }
+    else {
         $desired = 'Skip'                       # non-interactive: never prompt/write
     }
 }
 
 if ($desired -eq 'Install' -and -not $permHookPresent) {
     # Good-citizen AV gate: probe first, never evade the antivirus.
-    $probe   = Test-AvBlocksHook
+    $probe = Test-AvBlocksHook
     $proceed = $true
     if ($probe.blocked) {
         $avBlocksHook = $true
-        $avProduct    = Get-AvProduct
-        $avName       = if ($avProduct) { $avProduct } else { 'your antivirus' }
+        $avProduct = Get-AvProduct
+        $avName = if ($avProduct) { $avProduct } else { 'your antivirus' }
         if ($IgnoreAvBlock) {
             $proceed = $true                      # explicit informed override
-        } elseif ($interactive) {
+        }
+        elseif ($interactive) {
             Write-Host ''
             Write-Host "Antivirus ($avName) appears to BLOCK the vault permission hook here:"
             Write-Host "  $($probe.detail)"
@@ -399,7 +410,8 @@ if ($desired -eq 'Install' -and -not $permHookPresent) {
             Write-Host 'an antivirus block is YOUR decision and YOUR responsibility.'
             $ans = Read-Host 'Type exactly  yes  to install anyway despite the AV block (anything else cancels)'
             $proceed = ($ans -ceq 'yes')
-        } else {
+        }
+        else {
             $proceed = $false                     # non-interactive + blocked: fail gracefully
         }
         if (-not $proceed) {
@@ -412,37 +424,40 @@ if ($desired -eq 'Install' -and -not $permHookPresent) {
         try {
             $res = Set-VaultPermissionHook -Path $SettingsPath
             $permHookInstalled = [bool]$res.installed
-            $settingsBackup    = $res.backup
+            $settingsBackup = $res.backup
             if ($res.ContainsKey('error') -and $res['error']) { $permHookError = [string]$res['error'] }
-        } catch {
+        }
+        catch {
             $permHookError = $_.Exception.Message
         }
         if ($permHookInstalled) { $permHookPresent = $true }
     }
 }
 
-$permHookAction = if ($permHookInstalled)   { 'installed' }
-                  elseif ($permHookPresent) { 'present' }
-                  elseif ($avBlocksHook)    { 'av-blocked' }
-                  elseif ($permHookError)   { 'failed' }
-                  else                      { 'skipped' }
+$permHookAction = if ($permHookInstalled) { 'installed' }
+elseif ($permHookPresent) { 'present' }
+elseif ($avBlocksHook) { 'av-blocked' }
+elseif ($permHookError) { 'failed' }
+else { 'skipped' }
 $permHookHint = if ($permHookPresent) { $null }
-    elseif ($permHookError) {
-        "Per-call approval is STILL ON (security preserved) — not bypassed. Reason: $permHookError. This is the safe state; test /vault-* as long as you like. When you choose to accept the trade-off and pre-approve (that decision is on you), re-run:  $reRun  (or paste the hook from docs/TROUBLESHOOTING.md). One-time, global; restart Claude Code after."
-    } else {
-        "Per-call approval is STILL ON (the safe default): Claude Code asks before EVERY /vault-* call. Nothing in your settings.json was changed. Test it this way for as long as you want. ONLY if you choose to accept the security trade-off (it is then YOUR responsibility), enable the bypass by re-running:  $reRun  — one-time, global; restart Claude Code after. Full trade-off + undo: docs/TROUBLESHOOTING.md."
-    }
+elseif ($permHookError) {
+    "Per-call approval is STILL ON (security preserved) — not bypassed. Reason: $permHookError. This is the safe state; test /vault-* as long as you like. When you choose to accept the trade-off and pre-approve (that decision is on you), re-run:  $reRun  (or paste the hook from docs/TROUBLESHOOTING.md). One-time, global; restart Claude Code after."
+}
+else {
+    "Per-call approval is STILL ON (the safe default): Claude Code asks before EVERY /vault-* call. Nothing in your settings.json was changed. Test it this way for as long as you want. ONLY if you choose to accept the security trade-off (it is then YOUR responsibility), enable the bypass by re-running:  $reRun  — one-time, global; restart Claude Code after. Full trade-off + undo: docs/TROUBLESHOOTING.md."
+}
 $note = if ($permHookInstalled) {
     'SECURITY CHANGED BY YOU: the per-call approval prompt is now DISABLED for vault scripts (they run without asking). You enabled this; the risk is on you. RESTART Claude Code for it to take effect. Revert any time:  install-skill.ps1 -Remove  (or restore the settings.json backup). Details: docs/TROUBLESHOOTING.md.'
-} else {
+}
+else {
     'restart Claude Code so it discovers the skill and inherits VAULT_HOME'
 }
 
 $repoHooksAction = 'skipped'
-$repoHooksError  = $null
-$repoHooksHint   = $null
-$repoHooksRoot   = $null
-$repoHookCmd     = "pwsh -NoProfile -File `"$PSScriptRoot/install-git-hooks.ps1`" -Path `"$RepoPath`""
+$repoHooksError = $null
+$repoHooksHint = $null
+$repoHooksRoot = $null
+$repoHookCmd = "pwsh -NoProfile -File `"$PSScriptRoot/install-git-hooks.ps1`" -Path `"$RepoPath`""
 if (-not $Remove) {
     $repoDesired = $RepoHooks
     if ($repoDesired -eq 'Ask') {
@@ -453,41 +468,43 @@ if (-not $Remove) {
             Write-Host "Target repo path: $RepoPath"
             $ans = Read-Host 'Type exactly  yes  to install repo hooks now (anything else skips)'
             $repoDesired = if ($ans -ceq 'yes') { 'Install' } else { 'Skip' }
-        } else {
+        }
+        else {
             $repoDesired = 'Skip'
         }
     }
     if ($repoDesired -eq 'Install') {
         $hookInstall = Install-VaultRepoHooks -Path $RepoPath
         $repoHooksAction = [string]$hookInstall.action
-        $repoHooksError  = $hookInstall.error
-        $repoHooksRoot   = $hookInstall.repo_root
+        $repoHooksError = $hookInstall.error
+        $repoHooksRoot = $hookInstall.repo_root
         if ($repoHooksAction -eq 'failed') {
             $repoHooksHint = "Repo hooks were not installed. Fix the repo path or run manually: $repoHookCmd"
         }
-    } else {
+    }
+    else {
         $repoHooksHint = "To install repo freshness hooks later, run: $repoHookCmd"
     }
 }
 
 Write-VaultResult ([ordered]@{
-    installed               = $true
-    skill_dir               = $skillDir
-    vault_home              = $cloneRoot
-    persisted               = $persisted
-    profile_hint            = $profileHint
-    scripts_dir             = $scriptsDir
-    settings_path           = $SettingsPath
-    settings_backup         = $settingsBackup
-    av_product              = $avProduct
-    av_blocks_hook          = $avBlocksHook
-    permission_hook_present = $permHookPresent
-    permission_hook_action  = $permHookAction
-    permission_hook_error   = $permHookError
-    permission_hook_hint    = $permHookHint
-    repo_hooks_action       = $repoHooksAction
-    repo_hooks_repo_root    = $repoHooksRoot
-    repo_hooks_error        = $repoHooksError
-    repo_hooks_hint         = $repoHooksHint
-    note                    = $note
-}) 0
+        installed               = $true
+        skill_dir               = $skillDir
+        vault_home              = $cloneRoot
+        persisted               = $persisted
+        profile_hint            = $profileHint
+        scripts_dir             = $scriptsDir
+        settings_path           = $SettingsPath
+        settings_backup         = $settingsBackup
+        av_product              = $avProduct
+        av_blocks_hook          = $avBlocksHook
+        permission_hook_present = $permHookPresent
+        permission_hook_action  = $permHookAction
+        permission_hook_error   = $permHookError
+        permission_hook_hint    = $permHookHint
+        repo_hooks_action       = $repoHooksAction
+        repo_hooks_repo_root    = $repoHooksRoot
+        repo_hooks_error        = $repoHooksError
+        repo_hooks_hint         = $repoHooksHint
+        note                    = $note
+    }) 0
