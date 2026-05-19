@@ -44,6 +44,7 @@ Path arguments accept any path inside the repo; the repo root (and
 | `VAULT_API_BASE`     | `http://localhost:8000`| all API callers    |
 | `VAULT_NETWORK`      | `vault_default`        | index-repo         |
 | `VAULT_INDEXER_IMAGE`| `vault-indexer:local`  | index-repo         |
+| `VAULT_STATS_DIR`    | OS local app-data path | query, vault-savings |
 | `VAULT_HOME`         | (set by install-skill) | the skill, to locate these scripts from any repo |
 
 These scripts are **never copied into the repos you search** — they
@@ -102,8 +103,15 @@ reported `state:"gone", done:true`.
 
 ### `query.ps1 <Query> [Path] [-Limit N]`
 → `{repo_id, query, count, results:[{path,language,start_line,
-end_line,score,code}]}`. 404 → exit 5 (skill offers `/vault-index`).
-Rendering for the user is the skill's job.
+end_line,score,code}], savings:{...}}`. `savings` is an estimate/upper
+bound of context tokens avoided this query. Appends one best-effort JSONL
+ledger event per call (stats failures never fail search). 404 → exit 5
+(skill offers `/vault-index`). Rendering for the user is the skill's job.
+
+### `vault-savings.ps1 [Path] [-Days N]`
+Aggregates query ledger events for the repo and returns all-time + recent
+window estimates:
+`{repo_id, stats_file, recorded_queries, corrupt_lines, all_time:{...}, window:{days,...}, basis}`.
 
 ### `vault-inspect.ps1 [Path] [-Files] [-Language L] [-Offset N] [-Limit N]`
 AD-9 read-only introspection (not search). →

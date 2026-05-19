@@ -71,6 +71,23 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
             *_optional_arg(a, "limit", "-Limit"),
         ],
     },
+    "vault_savings": {
+        "description": "Run scripts/vault-savings.ps1 for token-savings estimates.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+                "days": {"type": "integer", "minimum": 1, "maximum": 365},
+            },
+            "additionalProperties": False,
+        },
+        "script": "vault-savings.ps1",
+        "argv": lambda a: [
+            "-Path",
+            a.get("path", "."),
+            *_optional_arg(a, "days", "-Days"),
+        ],
+    },
     "vault_inspect": {
         "description": "Run scripts/vault-inspect.ps1 for read-only stats/inventory.",
         "schema": {

@@ -252,6 +252,77 @@ Describe 'query.ps1' {
             $r.Json.results[0].path | Should -Be 'a.py'
         } finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }
+
+    It 'emits savings and appends one ledger event on 200' {
+        $statsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vault-stats-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $statsDir | Out-Null
+        $stub = Start-StubApi @(@{ match = '^/api/query/'; status = 200; body = @{
+            repo_id = 'x'; query = 'q'; results = @(
+                @{ path = 'file1.py'; language = 'python'; start_line = 1; end_line = 1; code = 'one'; score = 0.9 }
+            ) } })
+        try {
+            $env:VAULT_API_BASE = $stub.Base
+            $env:VAULT_STATS_DIR = $statsDir
+            $r = Invoke-Script 'query.ps1' @('q', '-Path', $repo)
+            $r.Code | Should -Be 0
+            $r.Json.savings.returned_tokens | Should -BeGreaterThan 0
+            $r.Json.savings.baseline_tokens_upper | Should -BeGreaterThan 0
+            $r.Json.savings.files_counted | Should -Be 1
+            $repoId = (Invoke-Script 'repo-id.ps1' @('-Path', $repo, '-Raw')).Raw.Trim()
+            $ledger = Join-Path $statsDir "$repoId.jsonl"
+            Test-Path -LiteralPath $ledger | Should -BeTrue
+            $lines = [IO.File]::ReadAllLines($ledger)
+            $lines.Count | Should -Be 1
+            $event = $lines[0] | ConvertFrom-Json
+            $event.repo_id | Should -Be $repoId
+            $event.returned_tokens | Should -BeGreaterThan 0
+        } finally {
+            $env:VAULT_API_BASE = $null
+            $env:VAULT_STATS_DIR = $null
+            Stop-StubApi $stub
+            Remove-Item -Recurse -Force $statsDir -ErrorAction SilentlyContinue
+        }
+    }
+}
+
+Describe 'vault-savings.ps1' {
+    BeforeAll { $script:repo = New-TempGitRepo }
+    AfterAll  { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
+
+    It 'aggregates all-time and window totals from the ledger' {
+        $statsDir = Join-Path ([System.IO.Path]::GetTempPath()) ("vault-stats-" + [guid]::NewGuid().ToString('N').Substring(0, 8))
+        New-Item -ItemType Directory -Path $statsDir | Out-Null
+        try {
+            $env:VAULT_STATS_DIR = $statsDir
+            $repoId = (Invoke-Script 'repo-id.ps1' @('-Path', $repo, '-Raw')).Raw.Trim()
+            $statsFile = Join-Path $statsDir "$repoId.jsonl"
+            $recentTs = [DateTime]::UtcNow.AddDays(-1).ToString('o')
+            $oldTs = [DateTime]::UtcNow.AddDays(-20).ToString('o')
+            @(
+                @{ ts = $recentTs; repo_id = $repoId; returned_tokens = 10; baseline_tokens_upper = 100; saved_tokens_upper = 90 }
+                @{ ts = $oldTs; repo_id = $repoId; returned_tokens = 20; baseline_tokens_upper = 80; saved_tokens_upper = 60 }
+            ) | ForEach-Object {
+                [IO.File]::AppendAllText($statsFile, (($_ | ConvertTo-Json -Compress) + "`n"))
+            }
+            [IO.File]::AppendAllText($statsFile, "not json`n")
+
+            $r = Invoke-Script 'vault-savings.ps1' @('-Path', $repo, '-Days', '7')
+            $r.Code | Should -Be 0
+            $r.Json.recorded_queries | Should -Be 2
+            $r.Json.corrupt_lines | Should -Be 1
+            $r.Json.all_time.queries | Should -Be 2
+            $r.Json.all_time.returned_tokens | Should -Be 30
+            $r.Json.all_time.baseline_tokens_upper | Should -Be 180
+            $r.Json.all_time.saved_tokens_upper | Should -Be 150
+            $r.Json.window.days | Should -Be 7
+            $r.Json.window.queries | Should -Be 1
+            $r.Json.window.returned_tokens | Should -Be 10
+            $r.Json.window.saved_tokens_upper | Should -Be 90
+        } finally {
+            $env:VAULT_STATS_DIR = $null
+            Remove-Item -Recurse -Force $statsDir -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Describe 'vault-inspect.ps1 — AD-9 read-only' {

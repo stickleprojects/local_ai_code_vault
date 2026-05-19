@@ -6,6 +6,7 @@ This server exposes MCP tools that map 1:1 to existing host scripts:
 - `vault_status` → `scripts/vault-status.ps1`
 - `vault_index` → `scripts/index-repo.ps1`
 - `vault_search` → `scripts/query.ps1`
+- `vault_savings` → `scripts/vault-savings.ps1`
 - `vault_inspect` → `scripts/vault-inspect.ps1`
 - `vault_hooks` → `scripts/install-git-hooks.ps1`
 

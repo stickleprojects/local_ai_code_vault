@@ -55,8 +55,9 @@ scripts by absolute path, and they take the target repo as an argument.
 4. **Index it:** `/vault-index` (or, by hand from this clone,
    `pwsh -NoProfile -File scripts/index-repo.ps1 <repo-path> -Build -Wait`).
 5. **Search:** `/vault-search "<query>"`, or check state with
-   `/vault-status`, inspect what's indexed with `/vault-inspect`, and
-   auto-reindex on commit with `/vault-hooks`.
+   `/vault-status`, inspect what's indexed with `/vault-inspect`, view
+   estimated savings with `/vault-savings`, and auto-reindex on commit
+   with `/vault-hooks`.
 
 The skill is pure delegation; all logic is in standalone, individually
 runnable scripts — contracts in [scripts/README.md](scripts/README.md).
@@ -84,7 +85,8 @@ once at user scope (no repo-local Copilot files required):
 2. Restart VS Code/Copilot.
 3. In any repo, ask Copilot to run `vault_index` (or run
    `pwsh -NoProfile -File scripts/index-repo.ps1 <repo-path>` manually).
-4. Use `vault_search`, `vault_status`, `vault_inspect`, `vault_hooks`.
+4. Use `vault_search`, `vault_status`, `vault_inspect`, `vault_savings`,
+   `vault_hooks`.
 
 Validation checklist:
 - [ ] `install-copilot.ps1` reports `installed:true` and shows a

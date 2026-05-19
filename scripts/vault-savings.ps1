@@ -71,8 +71,13 @@ if (Test-Path -LiteralPath $statsFile -PathType Leaf) {
         try { $ev = $line | ConvertFrom-Json } catch { $corrupt++; continue }
         if ($null -eq $ev.ts) { $corrupt++; continue }
         Add-Event $all $ev
-        $ts = $null
-        if ([DateTime]::TryParse([string]$ev.ts, [ref]$ts)) {
+        [DateTime]$ts = [DateTime]::MinValue
+        if ([DateTime]::TryParse(
+            [string]$ev.ts,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::RoundtripKind,
+            [ref]$ts
+        )) {
             $tsUtc = $ts.ToUniversalTime()
             if ($null -eq $firstAt -or $tsUtc -lt $firstAt) { $firstAt = $tsUtc }
             if ($null -eq $lastAt  -or $tsUtc -gt $lastAt)  { $lastAt  = $tsUtc }

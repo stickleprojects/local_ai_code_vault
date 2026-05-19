@@ -2,9 +2,10 @@
 name: vault
 description: >-
   Semantic code search over the local AI code vault. Use when the user
-  invokes /vault-status, /vault-index, /vault-search, /vault-inspect, or
-  /vault-hooks, or asks to index / semantically search / check indexing
-  status of the current repository against the local vault stack.
+  invokes /vault-status, /vault-index, /vault-search, /vault-savings,
+  /vault-inspect, or /vault-hooks, or asks to index / semantically
+  search / check indexing status of the current repository against the
+  local vault stack.
 ---
 
 # Vault skill (thin delegation — AD-4)
@@ -54,17 +55,17 @@ Full contracts: `{{VAULT_SCRIPTS}}/README.md`.
 ## Resolving the subcommand (read this first)
 
 This is **one** skill named `vault`; `status`/`index`/`search`/
-`inspect`/`hooks` are subcommands, not separate skills. The harness may
-hand you the invocation as bare `/vault` with the rest in arguments, so
-**determine the subcommand from the user's literal message**, not from
-the skill name alone.
+`savings`/`inspect`/`hooks` are subcommands, not separate skills. The
+harness may hand you the invocation as bare `/vault` with the rest in
+arguments, so **determine the subcommand from the user's literal
+message**, not from the skill name alone.
 
 - Take the first of these keywords that appears in the user's input —
-  `index`, `status`, `search`, `inspect`, `hooks` — whether written
-  `/vault-index`, `/vault index`, `vault-index`, or as natural language
-  ("index this repo with vault"). A leading `-` (e.g. `-index`) is part
-  of the subcommand token; strip it. That keyword selects the row in
-  **Commands** below.
+  `index`, `status`, `search`, `savings`, `inspect`, `hooks` — whether
+  written `/vault-index`, `/vault index`, `vault-index`, or as natural
+  language ("index this repo with vault"). A leading `-` (e.g.
+  `-index`) is part of the subcommand token; strip it. That keyword
+  selects the row in **Commands** below.
 - For `search`, everything after the keyword is the query string.
 - **Never** reply "you ran /vault with no subcommand" when any of those
   keywords is present — that is the bug this section exists to prevent.
@@ -81,6 +82,7 @@ the skill name alone.
 | `/vault-status` | `vault-health.ps1`, then `vault-status.ps1 <path>` | Report reachable/registered/stale; if `stale`, say which/how many files changed and offer `/vault-index -Incremental`; if not registered, offer `/vault-index`. |
 | `/vault-index` | `index-repo.ps1 <path> [-Incremental] [-Wait] [-Build]` | **Run immediately — the explicit `/vault-index` invocation is the user's consent. Do NOT ask "want me to index?" and do NOT gate on a prior `/vault-status` check; indexing is non-destructive.** Default background: report `container_id`, then poll `index-status.ps1 <id>` as a tracked task and report completion in-session. `-Wait` for small repos. |
 | `/vault-search <query>` | `query.ps1 "<query>" <path> [-Limit N]` | Format `results[]` as a readable list (path, line range, score, code). |
+| `/vault-savings` | `vault-savings.ps1 <path> [-Days N]` | Report estimate/upper-bound savings totals and recent-window rollup from the per-repo ledger. |
 | `/vault-inspect` | `vault-inspect.ps1 <path> [-Files] [-Language L]` | Summarise `stats` (counts, per-language, skipped); list inventory only if `-Files` was asked for. |
 | `/vault-hooks` | `install-git-hooks.ps1 <path> [-Remove]` | Confirm install/removal; explain hooks auto-reindex on commit/merge, non-blocking. |
 
