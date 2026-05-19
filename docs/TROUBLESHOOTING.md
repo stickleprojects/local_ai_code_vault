@@ -119,15 +119,28 @@ probes your AV first (it never disables or evades it). If you are not
 comfortable with that trade-off, **don't install the hook** — keep
 clicking approve, or paste a manually narrowed variant.
 
+**Decline now, enable later.** You do **not** have to decide at install
+time. Install the skill with the prompt left on — `-PermissionHook
+Skip` (or just answer anything other than `yes` at the interactive
+prompt, or run non-interactively). Nothing in `settings.json` is
+touched. Use `/vault-*` like that for as long as you want; when (if)
+you decide to accept the trade-off, enable the bypass any time by
+re-running:
+
+```
+pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
+```
+
 **Undo / remove the permission hook.** `install-skill.ps1 -Remove`
-uninstalls the *skill* but intentionally does **not** touch your
-`settings.json`. To remove the pre-approval: restore the timestamped
-`~/.claude/settings.json.bak-<timestamp>` the installer wrote (its path
-is in the install result as `settings_backup`), **or** edit
-`~/.claude/settings.json` and delete the `hooks.PreToolUse` entry whose
-`command` contains `local_ai_code_vault` (leave any other PreToolUse
-entries intact). Restart Claude Code; the per-call prompt returns
-immediately.
+uninstalls the *skill* **and removes the pre-approval hook** (fail-safe
+— this re-enables the prompt). It backs up `settings.json` first,
+drops only the `hooks.PreToolUse` entry whose `command` contains
+`local_ai_code_vault`, and leaves every other hook intact; an
+unparseable `settings.json` is left untouched (remove the entry by
+hand). You can also revert manually: restore the timestamped
+`~/.claude/settings.json.bak-<timestamp>` (its path is reported as
+`settings_backup`), or delete that one `PreToolUse` entry yourself.
+Restart Claude Code; the per-call prompt returns immediately.
 
 **code 4 but `docker compose ps` looks up.** The API healthcheck is
 authoritative — check `curl -fsS http://localhost:8000/api/status`. If

@@ -48,14 +48,28 @@ Then **restart Claude Code**. This copies `SKILL.md` to
 `VAULT_HOME` = this clone's root so the skill can locate the scripts.
 Re-run after moving/updating the clone; `-Remove` uninstalls.
 
-### Optional: stop the per-call approval prompt (security trade-off)
+### Optional: disable the per-call approval prompt (your call, your risk)
 
-Out of the box Claude Code prompts for approval on **every** `/vault-*`
-call. You can pre-approve by adding `-PermissionHook Install`:
+> ⚠️ Out of the box Claude Code prompts you to approve **every**
+> `/vault-*` call. That prompt is a safety check. You can turn it off
+> for vault scripts — but **this deliberately weakens that check, and
+> if you enable it the risk is on you.**
+
+**The safe default:** just install the skill (step above) and use
+`/vault-*` with the prompt on. **Nothing touches `settings.json`
+unless you explicitly opt in.** Try it this way for as long as you
+like first.
+
+**To disable the prompt later, when/if you accept the trade-off**, opt
+in explicitly:
 
 ```
 pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
 ```
+
+(or run the installer interactively and **type `yes`** at the security
+prompt; `-PermissionHook Skip` is the explicit "install but do **not**
+grant the bypass" choice.)
 
 **What it changes:** it writes a scoped `PreToolUse` hook into your
 **global** `~/.claude/settings.json` that **auto-approves (no prompt)**
@@ -64,18 +78,18 @@ PowerShell calls which invoke a script under a
 prompts as normal.
 
 - **Benefit:** no approval prompt on each `/vault-*` call.
-- **Risk:** this is an intentional, narrowly-scoped relaxation of the
-  human-in-the-loop approval gate for that one command class. Anything
-  that can write a matching command could run vault scripts without a
-  prompt.
-- **Safeguards:** opt-in (the default does nothing to settings.json);
-  fail-closed (a non-interactive run, `Skip`, a `no`, malformed JSON,
-  or any write error keeps the prompt); a timestamped `.bak` is written
-  first; a non-evasive antivirus probe runs before writing and never
-  disables/evades your AV.
-- **Reversible:** restore the `.bak`, or delete the `PreToolUse` entry
-  whose command contains `local_ai_code_vault`, then restart Claude
-  Code.
+- **Risk (on you):** an intentional reduction of the human-in-the-loop
+  approval gate for that command class. Anything that can produce a
+  matching command then runs vault scripts without asking you.
+- **Safeguards:** opt-in (explicit `yes`/flag only — the default does
+  nothing); fail-closed (a non-interactive run, `Skip`, anything other
+  than `yes`, malformed JSON, or any write error keeps the prompt); a
+  timestamped `.bak` is written first; a non-evasive antivirus probe
+  runs before writing and never disables/evades your AV.
+- **Reversible:** `pwsh -NoProfile -File scripts/install-skill.ps1
+  -Remove` removes the hook again (backs up first, keeps your other
+  hooks). Or restore the `.bak`, or delete the `PreToolUse` entry whose
+  command contains `local_ai_code_vault`. Restart Claude Code after.
 
 Full detail, the exact hook, AV guidance, and the manual-paste
 alternative: [TROUBLESHOOTING.md](TROUBLESHOOTING.md).

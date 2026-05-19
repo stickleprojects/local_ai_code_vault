@@ -30,7 +30,11 @@
   carries the exact JSON to paste. Restart Claude Code after adding it.
 
 .PARAMETER SkillsRoot  Skills directory (default: ~/.claude/skills).
-.PARAMETER Remove      Uninstall the skill and stop here.
+.PARAMETER Remove
+  Uninstall the skill AND remove the permission-bypass hook from
+  SettingsPath (fail-safe: this re-enables the prompt). Only our own
+  PreToolUse entry is dropped; other hooks are kept; a .bak is written
+  first; an unparseable settings.json is left untouched. Stops here.
 .PARAMETER NoPersist   Do not persist VAULT_HOME (process scope only).
 .PARAMETER SettingsPath
   User Claude Code settings.json to inspect / write the permission hook
@@ -42,10 +46,14 @@
             report it as missing (no prompt, no write).
     Install pre-approve: idempotently merge the scoped PreToolUse hook
             into SettingsPath (a timestamped .bak is written first).
-    Skip    keep the prompt-on-every-call security; only report status.
+    Skip    DON'T grant the bypass — keep the per-call approval prompt
+            (the safe default). Use this to install the skill and try
+            /vault-* with prompting on first; re-run later with
+            -PermissionHook Install to enable the bypass when/if you
+            decide to accept the trade-off. Only reports status.
   Fail-closed: the security prompt is bypassed ONLY on an explicit
-  grant (interactive "y" or -PermissionHook Install) that writes the
-  hook cleanly. A non-interactive run, a "no" answer, a malformed
+  grant (interactive exact "yes", or -PermissionHook Install) that
+  writes the hook cleanly. A non-interactive run, a "no" answer, a malformed
   settings.json, or any write error all leave the prompt in place and
   report `permission_hook_action` = skipped/failed (the skill itself
   still installs; exit stays 0).
@@ -80,6 +88,48 @@ $skillDir  = Join-Path $SkillsRoot 'vault'
 $dest      = Join-Path $skillDir 'SKILL.md'
 $source    = Join-Path $cloneRoot 'SKILL.md'
 
+function Remove-VaultPermissionHook {
+    # Fail-SAFE: removing the pre-approval re-enables the prompt (more
+    # secure), so -Remove does it. ONLY our own PreToolUse entry (a hook
+    # whose command contains local_ai_code_vault) is dropped — every
+    # other hook is left intact. A timestamped backup is written first.
+    # An unparseable settings.json is LEFT UNTOUCHED (never destroy a
+    # file we can't safely rewrite). Returns
+    # @{ removed=<bool>; backup=<path|null>; error=<msg?> }.
+    param([Parameter(Mandatory)][string]$Path)
+    if (-not (Test-Path -LiteralPath $Path)) { return @{ removed = $false; backup = $null } }
+    try { $settings = [IO.File]::ReadAllText($Path) | ConvertFrom-Json -AsHashtable }
+    catch { return @{ removed = $false; backup = $null; error = "left $Path untouched (cannot parse as JSON: $($_.Exception.Message)); delete the local_ai_code_vault PreToolUse entry by hand" } }
+    if ($settings -isnot [hashtable] -or -not $settings.ContainsKey('hooks') -or $settings['hooks'] -isnot [hashtable]) {
+        return @{ removed = $false; backup = $null }
+    }
+    $hooks = $settings['hooks']
+    if (-not $hooks.ContainsKey('PreToolUse') -or $null -eq $hooks['PreToolUse']) {
+        return @{ removed = $false; backup = $null }
+    }
+    $kept = @(); $dropped = 0
+    foreach ($e in @($hooks['PreToolUse'])) {
+        $isOurs = $false
+        if ($e -is [hashtable] -and $e.ContainsKey('hooks')) {
+            foreach ($h in @($e['hooks'])) {
+                if ($h -is [hashtable] -and "$($h['command'])" -match 'local_ai_code_vault') { $isOurs = $true }
+            }
+        }
+        if ($isOurs) { $dropped++ } else { $kept += , $e }
+    }
+    if ($dropped -eq 0) { return @{ removed = $false; backup = $null } }
+    $backup = "$Path.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+    Copy-Item -LiteralPath $Path -Destination $backup -Force
+    if ($kept.Count -gt 0) {
+        $hooks['PreToolUse'] = @($kept)
+    } else {
+        $null = $hooks.Remove('PreToolUse')
+        if ($hooks.Count -eq 0) { $null = $settings.Remove('hooks') }
+    }
+    [IO.File]::WriteAllText($Path, ($settings | ConvertTo-Json -Depth 12))
+    return @{ removed = $true; backup = $backup }
+}
+
 if ($Remove) {
     $existed = Test-Path -LiteralPath $skillDir
     if ($existed) { Remove-Item -LiteralPath $skillDir -Recurse -Force }
@@ -87,10 +137,24 @@ if ($Remove) {
         [Environment]::SetEnvironmentVariable('VAULT_HOME', $null, 'User')
     }
     $env:VAULT_HOME = $null
+    try { $rh = Remove-VaultPermissionHook -Path $SettingsPath }
+    catch { $rh = @{ removed = $false; backup = $null; error = $_.Exception.Message } }
+    $rhErr = if ($rh.ContainsKey('error') -and $rh['error']) { [string]$rh['error'] } else { $null }
     Write-VaultResult ([ordered]@{
-        removed     = $true
-        skill_dir   = $skillDir
-        was_present = [bool]$existed
+        removed                 = $true
+        skill_dir               = $skillDir
+        was_present             = [bool]$existed
+        settings_path           = $SettingsPath
+        settings_backup         = $rh.backup
+        permission_hook_removed = [bool]$rh.removed
+        permission_hook_error   = $rhErr
+        note                    = if ($rh.removed) {
+            'Permission pre-approval REMOVED: Claude Code will prompt on every /vault-* call again. Restart Claude Code.'
+        } elseif ($rhErr) {
+            "Skill removed. Permission hook NOT removed: $rhErr"
+        } else {
+            'Skill removed. No vault permission hook was present in settings.json (nothing to revert).'
+        }
     }) 0
 }
 
@@ -248,6 +312,8 @@ $permHookError     = $null
 $avProduct         = $null
 $avBlocksHook      = $false
 $interactive       = (-not [Console]::IsInputRedirected) -and (-not [Console]::IsOutputRedirected)
+# Exact command to enable the bypass later (copy-pasteable).
+$reRun             = "pwsh -NoProfile -File `"$PSCommandPath`" -PermissionHook Install"
 
 $desired = $PermissionHook
 if ($desired -eq 'Ask') {
@@ -255,12 +321,26 @@ if ($desired -eq 'Ask') {
         $desired = 'Skip'                       # already approved — nothing to ask
     } elseif ($interactive) {
         Write-Host ''
-        Write-Host 'Claude Code will prompt for approval on EVERY /vault-* call.'
-        Write-Host 'Pre-approving adds a scoped PreToolUse hook to:'
+        Write-Host '=============  SECURITY DECISION - THIS ONE IS ON YOU  ============='
+        Write-Host 'By default Claude Code asks you to APPROVE EVERY /vault-* call.'
+        Write-Host ''
+        Write-Host 'Answering yes writes an auto-allow hook into your GLOBAL file:'
         Write-Host "  $SettingsPath"
-        Write-Host 'It auto-allows ONLY vault scripts; every other command stays gated.'
-        $ans = Read-Host 'Pre-approve vault skill scripts now? [y/N]'
-        $desired = if ($ans -match '^(y|yes)$') { 'Install' } else { 'Skip' }
+        Write-Host 'After that, PowerShell calls to vault scripts RUN WITHOUT ASKING'
+        Write-Host 'YOU. Everything else still prompts. This DELIBERATELY WEAKENS'
+        Write-Host "Claude Code's approval gate. If you enable it, that is YOUR"
+        Write-Host 'decision and YOUR responsibility. (A backup is written; revert'
+        Write-Host 'any time with: install-skill.ps1 -Remove.)'
+        Write-Host ''
+        Write-Host 'RECOMMENDED: answer No, keep the prompt, and try /vault-* for a'
+        Write-Host 'while first. You can enable the bypass later, any time, with:'
+        Write-Host "  $reRun"
+        Write-Host '==================================================================='
+        $ans = Read-Host 'Type exactly  yes  to DISABLE the prompt now (anything else keeps it ON)'
+        $desired = if ($ans -ceq 'yes') { 'Install' } else { 'Skip' }
+        if ($desired -eq 'Skip') {
+            Write-Host 'Keeping the approval prompt ON. Re-run the command above when (if) you want the bypass.'
+        }
     } else {
         $desired = 'Skip'                       # non-interactive: never prompt/write
     }
@@ -278,13 +358,14 @@ if ($desired -eq 'Install' -and -not $permHookPresent) {
             $proceed = $true                      # explicit informed override
         } elseif ($interactive) {
             Write-Host ''
-            Write-Host "Antivirus ($avName) appears to block the vault permission hook here:"
+            Write-Host "Antivirus ($avName) appears to BLOCK the vault permission hook here:"
             Write-Host "  $($probe.detail)"
-            Write-Host 'We will NOT disable or evade your antivirus. You can install the'
-            Write-Host 'hook anyway, but it may be quarantined/ineffective until you add'
-            Write-Host 'an AV exclusion yourself (see docs/TROUBLESHOOTING.md).'
-            $ans = Read-Host 'Install anyway despite the AV block? [y/N]'
-            $proceed = ($ans -match '^(y|yes)$')
+            Write-Host 'We will NOT disable or evade your antivirus. Installing anyway may'
+            Write-Host 'leave the hook quarantined/ineffective until YOU add an AV'
+            Write-Host 'exclusion yourself (see docs/TROUBLESHOOTING.md). Proceeding past'
+            Write-Host 'an antivirus block is YOUR decision and YOUR responsibility.'
+            $ans = Read-Host 'Type exactly  yes  to install anyway despite the AV block (anything else cancels)'
+            $proceed = ($ans -ceq 'yes')
         } else {
             $proceed = $false                     # non-interactive + blocked: fail gracefully
         }
@@ -314,12 +395,12 @@ $permHookAction = if ($permHookInstalled)   { 'installed' }
                   else                      { 'skipped' }
 $permHookHint = if ($permHookPresent) { $null }
     elseif ($permHookError) {
-        "permission hook NOT installed — security preserved, /vault-* will KEEP prompting. Reason: $permHookError. Fix it and re-run install-skill.ps1 -PermissionHook Install, or paste the hook from docs/TROUBLESHOOTING.md manually."
+        "Per-call approval is STILL ON (security preserved) — not bypassed. Reason: $permHookError. This is the safe state; test /vault-* as long as you like. When you choose to accept the trade-off and pre-approve (that decision is on you), re-run:  $reRun  (or paste the hook from docs/TROUBLESHOOTING.md). One-time, global; restart Claude Code after."
     } else {
-        'Claude Code will prompt on EVERY /vault-* call. Re-run install-skill.ps1 -PermissionHook Install to pre-approve, or paste the hook from docs/TROUBLESHOOTING.md into your user settings.json. One-time, global; restart Claude Code after.'
+        "Per-call approval is STILL ON (the safe default): Claude Code asks before EVERY /vault-* call. Nothing in your settings.json was changed. Test it this way for as long as you want. ONLY if you choose to accept the security trade-off (it is then YOUR responsibility), enable the bypass by re-running:  $reRun  — one-time, global; restart Claude Code after. Full trade-off + undo: docs/TROUBLESHOOTING.md."
     }
 $note = if ($permHookInstalled) {
-    'permission hook written to settings.json — RESTART Claude Code (hooks load at session start) so /vault-* stops prompting and the skill / VAULT_HOME are picked up'
+    'SECURITY CHANGED BY YOU: the per-call approval prompt is now DISABLED for vault scripts (they run without asking). You enabled this; the risk is on you. RESTART Claude Code for it to take effect. Revert any time:  install-skill.ps1 -Remove  (or restore the settings.json backup). Details: docs/TROUBLESHOOTING.md.'
 } else {
     'restart Claude Code so it discovers the skill and inherits VAULT_HOME'
 }

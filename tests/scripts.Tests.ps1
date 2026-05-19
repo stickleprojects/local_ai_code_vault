@@ -418,6 +418,35 @@ Describe 'install-skill.ps1' {
         $r.Json.removed | Should -BeTrue
         Test-Path (Join-Path $root 'vault') | Should -BeFalse
     }
+
+    It '-Remove also removes the permission hook, backs up, and keeps other hooks' {
+        $root = Join-Path $TestDrive 'skills8'
+        $set  = Join-Path $TestDrive 'rm-hook.json'
+        Set-Content $set '{"model":"x","hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo keepme"}]}]}}'
+        Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-PermissionHook', 'Install') | Out-Null
+        (Get-Content $set -Raw) | Should -Match 'local_ai_code_vault'   # installed
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.removed                 | Should -BeTrue
+        $r.Json.permission_hook_removed | Should -BeTrue
+        $r.Json.settings_backup         | Should -Not -BeNullOrEmpty
+        $j = Get-Content $set -Raw | ConvertFrom-Json
+        (Get-Content $set -Raw) | Should -Not -Match 'local_ai_code_vault'   # ours gone
+        $j.model | Should -Be 'x'                                            # other keys kept
+        $j.hooks.PreToolUse.Count | Should -Be 1                             # other hook kept
+        $j.hooks.PreToolUse[0].hooks[0].command | Should -Be 'echo keepme'
+    }
+
+    It '-Remove is a no-op (no backup) when no vault hook is present' {
+        $root = Join-Path $TestDrive 'skills9'
+        $set  = Join-Path $TestDrive 'rm-none.json'
+        Set-Content $set '{"model":"opus"}' -NoNewline
+        $r = Invoke-Script 'install-skill.ps1' @('-SkillsRoot', $root, '-NoPersist', '-SettingsPath', $set, '-Remove')
+        $r.Code | Should -Be 0
+        $r.Json.permission_hook_removed | Should -BeFalse
+        $r.Json.settings_backup         | Should -BeNullOrEmpty
+        (Get-Content $set -Raw) | Should -Be '{"model":"opus"}'             # untouched
+    }
 }
 
 Describe 'install-copilot.ps1' {
