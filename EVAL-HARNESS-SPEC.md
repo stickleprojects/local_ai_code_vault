@@ -4,7 +4,10 @@
 **Purpose:** Make "did retrieval get better/worse?" a falsifiable, gated test.
 Companion to `SEARCH-IMPACT-ANALYSIS.md` (the recommendations) and
 `COPILOT-PROMPTS.md` (the delegated work). **This harness is PR 1 — everything
-else gates on it.**
+else gates on it.** **Status: implemented and merged in #27** (`eval/run-eval.ps1`,
+`eval/baseline.json`, `eval/README.md`). The C# corpus pair + the
+`definition-above-callsite-csharp` case were added afterwards, so `baseline.json`
+needs regenerating to include them (PR 4's `-UpdateBaseline`).
 
 The core problem this solves: retrieval-quality changes (chunking, ranking,
 boosting) cannot be verified by ordinary unit tests or green CI. A diff can look
@@ -54,11 +57,18 @@ corpus/
   pkg/service.py             # defines class OrderService with method publish() -> SYMBOL/DEFINITION target
   tests/conftest.py          # defines a `db_session`-style fixture (savepoint pattern) -> CONFTEST under-ranking probe
   tests/test_service.py      # imports + uses OrderService and make_session() heavily -> CALL SITES that currently out-rank definitions
+  csharp/OrderService.cs       # defines class OrderService with method Publish() -> C# DEFINITION target (mirrors pkg/service.py)
+  csharp/OrderServiceTests.cs  # constructs + invokes OrderService.Publish() repeatedly -> C# CALL SITES
 ```
 
 This is enough to test: trivial-file filtering, definition-above-call-site
 ranking, conftest/fixture discovery, and (later) exact-symbol completeness.
-Add more files as new failure modes are found.
+
+The C# pair makes the definition-above-call-site failure mode **multi-language**,
+so the symbol-aware boost (PR 4) is proven language-general rather than Python-
+only. Per-language *doc-comment* enrichment (PR 5+) is verified by additional
+per-language fixtures added with each follow-up. Add more files as new failure
+modes are found.
 
 ---
 

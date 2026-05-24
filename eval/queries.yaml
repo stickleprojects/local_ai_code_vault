@@ -10,6 +10,8 @@
 #   pkg/service.py         - defines class OrderService      (definition / symbol target)
 #   tests/conftest.py      - defines db_session fixture      (under-ranked-conftest probe)
 #   tests/test_service.py  - heavy OrderService call sites   (should NOT out-rank definitions)
+#   csharp/OrderService.cs      - defines class OrderService (C# definition target; mirrors pkg/service.py)
+#   csharp/OrderServiceTests.cs - C# OrderService call sites (should NOT out-rank the C# definition)
 #
 # "CURRENT" notes record expected status against TODAY's vault, so baseline.json
 # is recorded honestly. The defect cases are EXPECTED TO FAIL today and are
@@ -44,7 +46,9 @@
     - "**/__init__.py"
   must_pass: true
   tags: [definition, fixture, noise]
-  # CURRENT: FAIL (conftest under-ranked; __init__.py appears). Fixed by PR2 (noise) + PR4 (ranking).
+  # CURRENT: FAIL (conftest under-ranked; __init__.py appears). Fixed by PR2 (noise filter)
+  #          + deferred Python definition enrichment (doc-keyed chunking). NL query has no exact
+  #          symbol token, so PR4's symbol boost alone does not land it.
 
 - id: fixture-discovery-natural
   query: "how do I get a test database session that rolls back after each test"
@@ -55,7 +59,8 @@
     - "pkg/fixtures.py"
   must_pass: false   # softer NL-phrasing variant; tracked in aggregate, not hard-gated
   tags: [definition, fixture, natural-language]
-  # CURRENT: FAIL expected. Promote to must_pass once PR4 lands.
+  # CURRENT: FAIL expected. Promote to must_pass once Python definition enrichment
+  #          (deferred per-language follow-up) lands.
 
 # ----------------------------------------------------------------------------
 # Definition-above-call-site ranking — the definition must beat the test that
@@ -70,7 +75,22 @@
     below: "tests/test_service.py"
   must_pass: true
   tags: [definition, ranking]
-  # CURRENT: FAIL likely (call sites out-rank definition). Fixed by PR4.
+  # CURRENT: FAIL likely (call sites out-rank definition). Fixed by PR4 (symbol boost).
+
+# Same definition-above-call-site defect, in C# — proves PR4's symbol boost is
+# language-general (not Python-only). The defining class must beat the test that
+# only constructs/invokes it.
+- id: definition-above-callsite-csharp
+  query: "OrderService Publish an order implementation"
+  k: 5
+  mode: semantic
+  expect_rank_above:
+    above: "csharp/OrderService.cs"
+    below: "csharp/OrderServiceTests.cs"
+  must_pass: true
+  tags: [definition, ranking, csharp, multi-language]
+  # CURRENT: FAIL likely (same defect as the Python case). Fixed by PR4 (symbol boost).
+  # ADDED for option-3 multi-language coverage — REVIEW LABELS before baselining (human-owned).
 
 # ----------------------------------------------------------------------------
 # Trivial-file noise guard — a vague query that tends to pull the marker
