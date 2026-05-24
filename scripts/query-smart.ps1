@@ -121,6 +121,11 @@ function Invoke-SymbolSearch {
         [Parameter(Mandatory)][string]$Identifier
     )
 
+    # --untracked: a completeness mode must include files the developer has
+    # created but not yet `git add`ed; plain `git grep` only sees tracked files
+    # and would silently miss them — defeating the whole point of symbol mode.
+    # Ignored files (build artifacts) stay excluded, matching what the indexer
+    # would have walked.
     $args = @(
         '-C', $RepoRoot,
         'grep',
@@ -128,6 +133,7 @@ function Invoke-SymbolSearch {
         '-I',
         '--full-name',
         '-w',
+        '--untracked',
         '-e', $Identifier,
         '--',
         '.'

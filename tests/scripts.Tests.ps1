@@ -340,6 +340,31 @@ Describe 'query-smart.ps1' {
         $paths | Should -Not -Contain 'noise.py'
     }
 
+    It 'includes untracked (not-yet-committed) files so completeness holds' {
+        $repoPath = $script:repo
+
+        # A tracked file and an UNTRACKED file both define the symbol. A
+        # completeness mode must return BOTH; plain `git grep` only sees tracked
+        # files and would silently miss the untracked one. WidgetFactory is
+        # unique to this case so it doesn't collide with sibling tests sharing
+        # the repo.
+        @('class WidgetFactory:', '    pass') |
+            Set-Content (Join-Path $repoPath 'tracked_widget.py')
+        & git -C $repoPath add tracked_widget.py
+
+        @('def make():', '    return WidgetFactory()') |
+            Set-Content (Join-Path $repoPath 'untracked_widget.py')
+        # deliberately NOT `git add`ed — this is the completeness probe
+
+        $r = Invoke-Script 'query-smart.ps1' @('WidgetFactory', '-Path', $repoPath, '-Symbol')
+        $r.Code | Should -Be 0
+        $r.Json.mode | Should -Be 'symbol'
+
+        $paths = @($r.Json.results | ForEach-Object { $_.path } | Sort-Object -Unique)
+        $paths | Should -Contain 'tracked_widget.py'
+        $paths | Should -Contain 'untracked_widget.py'
+    }
+
     It 'falls back when the vault stack is unavailable' {
         $env:VAULT_API_BASE = "http://localhost:$(Get-FreePort)"
         try {
