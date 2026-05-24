@@ -13,7 +13,11 @@ import httpx
 import pytest
 
 from src.models import EMBED_DIM, QUERY_PREFIX
-from src.query_handler import HttpQueryEmbedder, QueryHandler
+from src.query_handler import (
+    HttpQueryEmbedder,
+    QueryHandler,
+    TRIVIAL_FILE_NONBLANK_LINE_THRESHOLD,
+)
 from tests.fakes import FakeClient, FakeQueryEmbedder, FakeRegistry
 from src.models import RepoDetail
 
@@ -70,3 +74,77 @@ def test_handler_swallows_search_failure():
     )
     resp = QueryHandler(reg, FakeQueryEmbedder()).query("r1", "q")
     assert resp is not None and resp.results == []
+
+
+def test_handler_filters_trivial_near_empty_files():
+    fc = FakeClient(
+        collections=["r1"],
+        hits=[
+            (
+                {
+                    "path": "pkg/__init__.py",
+                    "start_line": 1,
+                    "end_line": 1,
+                    "code": "# marker\n",
+                },
+                0.99,
+            ),
+            (
+                {
+                    "path": "pkg/fixtures.py",
+                    "start_line": 1,
+                    "end_line": 6,
+                    "code": "def make_session():\n    x = 1\n    return x\n",
+                },
+                0.75,
+            ),
+        ],
+    )
+    reg = FakeRegistry(repos={"r1": RepoDetail(repo_id="r1")}, client=fc)
+    resp = QueryHandler(reg, FakeQueryEmbedder()).query("r1", "q", limit=5)
+    assert resp is not None
+    assert [h.path for h in resp.results] == ["pkg/fixtures.py"]
+    assert (
+        QueryHandler._nonblank_line_count("# marker\n")
+        <= TRIVIAL_FILE_NONBLANK_LINE_THRESHOLD
+    )
+
+
+def test_handler_collapses_overlapping_ranges_to_preserve_distinct_hits():
+    fc = FakeClient(
+        collections=["r1"],
+        hits=[
+            (
+                {
+                    "path": "pkg/service.py",
+                    "start_line": 10,
+                    "end_line": 30,
+                    "code": "class OrderService:\n    def publish(self):\n        return 1\n",
+                },
+                0.95,
+            ),
+            (
+                {
+                    "path": "pkg/service.py",
+                    "start_line": 12,
+                    "end_line": 18,
+                    "code": "def publish(self):\n    return 1\n",
+                },
+                0.92,
+            ),
+            (
+                {
+                    "path": "tests/test_service.py",
+                    "start_line": 1,
+                    "end_line": 8,
+                    "code": "def test_publish():\n    svc = 1\n    assert svc == 1\n",
+                },
+                0.60,
+            ),
+        ],
+    )
+    reg = FakeRegistry(repos={"r1": RepoDetail(repo_id="r1")}, client=fc)
+    resp = QueryHandler(reg, FakeQueryEmbedder()).query("r1", "q", limit=2)
+    assert resp is not None
+    assert [h.path for h in resp.results] == ["pkg/service.py", "tests/test_service.py"]
+    assert [(h.start_line, h.end_line) for h in resp.results] == [(10, 30), (1, 8)]

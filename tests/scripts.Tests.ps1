@@ -316,6 +316,8 @@ Describe 'query-smart.ps1' {
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'vault_unavailable'
             $r.Json.next_action | Should -Be 'workspace_search'
+            $r.Json.index_stale | Should -BeFalse
+            $r.Json.changed_files_not_indexed | Should -Be @()
         }
         finally { $env:VAULT_API_BASE = $null }
     }
@@ -363,6 +365,28 @@ Describe 'query-smart.ps1' {
             $r.Json.used_vault | Should -BeTrue
             $r.Json.fallback_reason | Should -BeNullOrEmpty
             $r.Json.count | Should -Be 1
+            $r.Json.index_stale | Should -BeFalse
+            $r.Json.changed_files_not_indexed | Should -Be @()
+        }
+        finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
+    }
+
+    It 'surfaces index_stale and changed_files_not_indexed when HEAD moved past indexed SHA' {
+        $first = (& git -C $repo rev-parse HEAD).Trim()
+        'three' | Set-Content (Join-Path $repo 'file3.py')
+        & git -C $repo add -A; & git -C $repo commit -qm 'C'
+
+        $stub = Start-StubApi @(
+            @{ match = '^/api/status$'; status = 200; body = @{ status = 'ok'; api_version = '0.1.0'; embed_model = 'nomic-embed-code'; embed_dim = 3584; qdrant_connected = $true } },
+            @{ match = '^/api/repos/'; status = 200; body = @{ repo_id = 'x'; indexed_sha = $first; indexed_at = '2026-01-01T00:00:00Z' } },
+            @{ match = '^/api/query/'; status = 200; body = @{ repo_id = 'x'; query = 'q'; results = @(@{ path = 'a.py'; language = 'python'; start_line = 1; end_line = 2; code = 'def f(): pass'; score = 0.8 }) } }
+        )
+        try {
+            $env:VAULT_API_BASE = $stub.Base
+            $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
+            $r.Code | Should -Be 0
+            $r.Json.index_stale | Should -BeTrue
+            $r.Json.changed_files_not_indexed | Should -Contain 'file3.py'
         }
         finally { $env:VAULT_API_BASE = $null; Stop-StubApi $stub }
     }

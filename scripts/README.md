@@ -129,8 +129,8 @@ Shared Claude+Copilot search orchestration wrapper:
   `next_action:"workspace_search"` so callers can continue normal file
   search/read flow and explain why vault was not used.
 
-Primary output keeps query-compatible fields:
-`{repo_id, query, count, results, savings, used_vault, ...}`.
+Primary output keeps query-compatible fields and adds index freshness:
+`{repo_id, query, count, results, savings, used_vault, index_stale, changed_files_not_indexed, ...}`.
 
 ### `vault-savings.ps1 [Path] [-Days N]`
 
