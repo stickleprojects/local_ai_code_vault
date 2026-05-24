@@ -45,6 +45,8 @@ if ([string]::IsNullOrWhiteSpace($Query)) {
 
 $root = Resolve-GitRoot -Path $Path
 $repoId = Get-RepoId -Path $root
+$indexStale = $false
+$changedFilesNotIndexed = @()
 
 function Invoke-JsonScript {
     param(
@@ -76,6 +78,23 @@ function New-ZeroSavings {
     }
 }
 
+function Get-IndexStaleness {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+
+    $status = Invoke-JsonScript -ScriptName 'vault-status.ps1' -NamedArgs @{ Path = $RepoRoot }
+    if ($status.code -ne 0) {
+        return [ordered]@{ stale = $false; changed = @() }
+    }
+
+    $staleValue = Get-VaultBodyValue -Body $status.body -Key 'stale'
+    $changedValue = Get-VaultBodyValue -Body $status.body -Key 'changed_files'
+    $changed = if ($null -ne $changedValue) { @($changedValue) } else { @() }
+    [ordered]@{
+        stale = [bool]$staleValue
+        changed = $changed
+    }
+}
+
 function Write-SearchOutcome {
     param(
         [bool]$UsedVault,
@@ -83,7 +102,9 @@ function Write-SearchOutcome {
         [string]$Message,
         $QueryBody,
         [bool]$IndexedThisRun = $false,
-        $IndexBody = $null
+        $IndexBody = $null,
+        [bool]$IndexStale = $indexStale,
+        [object[]]$ChangedFilesNotIndexed = $changedFilesNotIndexed
     )
     $count = 0
     $results = @()
@@ -110,6 +131,8 @@ function Write-SearchOutcome {
             next_action      = if ($UsedVault) { $null } else { 'workspace_search' }
             indexed_this_run = $IndexedThisRun
             index_result     = $IndexBody
+            index_stale      = $IndexStale
+            changed_files_not_indexed = @($ChangedFilesNotIndexed)
         }) 0
 }
 
@@ -119,6 +142,10 @@ if ($health.code -ne 0) {
     Write-SearchOutcome -UsedVault:$false -Reason 'vault_unavailable' `
         -Message 'Vault stack is unavailable; continuing with normal workspace file search.' -QueryBody $null
 }
+
+$staleness = Get-IndexStaleness -RepoRoot $root
+$indexStale = [bool]$staleness.stale
+$changedFilesNotIndexed = @($staleness.changed)
 
 # 2) Try semantic query first.
 $queryCall = Invoke-JsonScript -ScriptName 'query.ps1' -PositionalArgs @($Query) -NamedArgs @{
