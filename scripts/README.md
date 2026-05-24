@@ -27,24 +27,25 @@ Path arguments accept any path inside the repo; the repo root (and
   Never parse stderr.
 - **exit code** — mirrors `code` in the JSON. Stable values:
 
-| code | name          | meaning                                            |
-|------|---------------|----------------------------------------------------|
-| 0    | Ok            | success                                            |
-| 2    | Usage         | bad/missing arguments                              |
-| 3    | NotGitRepo    | path missing or not inside a git work tree         |
-| 4    | StackDown     | vault API unreachable (`docker compose up -d`)     |
-| 5    | NotRegistered | repo not registered / not indexed yet              |
+| code | name          | meaning                                               |
+| ---- | ------------- | ----------------------------------------------------- |
+| 0    | Ok            | success                                               |
+| 2    | Usage         | bad/missing arguments                                 |
+| 3    | NotGitRepo    | path missing or not inside a git work tree            |
+| 4    | StackDown     | vault API unreachable (`docker compose up -d`)        |
+| 5    | NotRegistered | repo not registered / not indexed yet                 |
 | 6    | Docker        | docker missing, indexer image missing, indexer failed |
-| 7    | ApiError      | API reachable but returned a non-2xx               |
+| 7    | ApiError      | API reachable but returned a non-2xx                  |
 
 ## Environment overrides
 
-| var                  | default                | used by            |
-|----------------------|------------------------|--------------------|
-| `VAULT_API_BASE`     | `http://localhost:8000`| all API callers    |
-| `VAULT_NETWORK`      | `vault_default`        | index-repo         |
-| `VAULT_INDEXER_IMAGE`| `vault-indexer:local`  | index-repo         |
-| `VAULT_HOME`         | (set by install-skill) | the skill, to locate these scripts from any repo |
+| var                   | default                 | used by                                          |
+| --------------------- | ----------------------- | ------------------------------------------------ |
+| `VAULT_API_BASE`      | `http://localhost:8000` | all API callers                                  |
+| `VAULT_NETWORK`       | `vault_default`         | index-repo                                       |
+| `VAULT_INDEXER_IMAGE` | `vault-indexer:local`   | index-repo                                       |
+| `VAULT_STATS_DIR`     | OS local app-data path  | query, vault-savings                             |
+| `VAULT_HOME`          | (set by install-skill)  | the skill, to locate these scripts from any repo |
 
 These scripts are **never copied into the repos you search** — they
 live in one clone and take the target repo as `<path>`. The skill finds
@@ -66,24 +67,29 @@ to it; nothing recomputes it. A subdirectory resolves to the same
 ## Scripts
 
 ### `repo-id.ps1 [Path] [-Raw]`
+
 → `{repo_id, repo_root, normalized_path, slug}` (or bare id with `-Raw`).
 
 ### `vault-health.ps1`
+
 → `{reachable, api_version, embed_model, embed_dim, qdrant_connected}`.
 Exit 4 if the stack is down. No repo context needed.
 
 ### `vault-status.ps1 [Path]`
+
 → `{repo_id, registered, indexed_sha, indexed_at, head_sha, stale,
 changed_files[]}`. `changed_files` is `null` when undeterminable (e.g.
 indexed SHA not in local history), `[]` when not stale.
 
 ### `index-repo.ps1 [Path] [-Incremental] [-Wait] [-Build] [-Rebuild]`
+
 Option-B launcher: `docker run` of the indexer image, repo bind-mounted
 read-only at `/repo`, joined to `VAULT_NETWORK`. `repo_id` is resolved
 here and passed explicitly (never recomputed in the container).
+
 - default (background): `docker run -d` (**not** `--rm`, so the
   container survives for `index-status.ps1`). → `{repo_id, mode,
-  waited:false, container_id, hint}`.
+waited:false, container_id, hint}`.
 - `-Wait`: `docker run --rm` attached; indexer logs stream to stderr;
   → `{repo_id, mode, waited:true, exit_code, indexer:{...summary}}`.
 - `-Incremental`: reindex only files changed since the indexed SHA
@@ -96,22 +102,51 @@ here and passed explicitly (never recomputed in the container).
   old image keeps running silently.
 
 ### `index-status.ps1 <ContainerId> [-Keep]`
+
 → `{container_id, state, exit_code, done}`. Reaps the container once
 exited (`-Keep` to retain for `docker logs`). A vanished container is
 reported `state:"gone", done:true`.
 
 ### `query.ps1 <Query> [Path] [-Limit N]`
+
 → `{repo_id, query, count, results:[{path,language,start_line,
-end_line,score,code}]}`. 404 → exit 5 (skill offers `/vault-index`).
-Rendering for the user is the skill's job.
+end_line,score,code}], savings:{...}}`. `savings` is an estimate/upper
+bound of context tokens avoided this query. Appends one best-effort JSONL
+ledger event per call (stats failures never fail search). 404 → exit 5
+(skill offers `/vault-index`). Rendering for the user is the skill's job.
+
+### `query-smart.ps1 <Query> [Path] [-Limit N] [-DoNotIndex] [-Build]`
+
+Shared Claude+Copilot search orchestration wrapper:
+
+- Checks stack reachability first.
+- Runs semantic query.
+- If unregistered (`code:5`), auto-indexes by default and retries once
+  (unless `-DoNotIndex`, which forces fallback).
+- If stack is down, indexing is declined, or no semantic hits are
+  found, returns a **successful** payload with
+  `used_vault:false`, `fallback_reason`, `fallback_message`, and
+  `next_action:"workspace_search"` so callers can continue normal file
+  search/read flow and explain why vault was not used.
+
+Primary output keeps query-compatible fields:
+`{repo_id, query, count, results, savings, used_vault, ...}`.
+
+### `vault-savings.ps1 [Path] [-Days N]`
+
+Aggregates query ledger events for the repo and returns all-time + recent
+window estimates:
+`{repo_id, stats_file, recorded_queries, corrupt_lines, all_time:{...}, window:{days,...}, basis}`.
 
 ### `vault-inspect.ps1 [Path] [-Files] [-Language L] [-Offset N] [-Limit N]`
+
 AD-9 read-only introspection (not search). →
 `{repo_id, stats:{indexed_sha,indexed_at,file_count,chunk_count,
 skipped_count,languages[]}, files:{...}|null}`. `-Files`/`-Language`
 adds the (optionally filtered) inventory.
 
 ### `install-git-hooks.ps1 [Path] [-Remove] [-Force]`
+
 Writes LF-newline POSIX `post-commit`/`post-merge` hooks that fire an
 **incremental** reindex in the background and `exit 0` immediately — a
 commit is never blocked or failed, and if the stack is down the reindex
@@ -119,7 +154,8 @@ simply no-ops. Hooks carry a marker so `-Remove` only deletes
 vault-managed ones; a pre-existing non-vault hook is left untouched
 unless `-Force`. Requires `pwsh` on PATH at commit time.
 
-### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist] [-SettingsPath <file>] [-PermissionHook Ask|Install|Skip] [-IgnoreAvBlock]`
+### `install-skill.ps1 [-SkillsRoot <dir>] [-Remove] [-NoPersist] [-SettingsPath <file>] [-PermissionHook Ask|Install|Skip] [-IgnoreAvBlock] [-RepoHooks Ask|Install|Skip] [-RepoPath <path>]`
+
 One-time setup so `/vault-*` works in **any** repo: copies `SKILL.md`
 to `<SkillsRoot>/vault/` (default `~/.claude/skills/vault/`) and records
 `VAULT_HOME` = this clone's root (persisted to the Windows User
@@ -159,13 +195,37 @@ interactive), and points the user at adding their own AV exclusion.
 (the non-interactive equivalent of "install anyway"). See
 [../docs/TROUBLESHOOTING.md](../docs/TROUBLESHOOTING.md).
 
-### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist]`
+`-RepoHooks` controls whether repo freshness hooks are installed during
+skill setup. `Ask` (default) prompts only in interactive runs; in
+non-interactive runs it safely skips. `Install` runs
+`install-git-hooks.ps1 -Path <RepoPath>` so `post-commit`/`post-merge`
+trigger background incremental reindexing. `Skip` leaves hooks
+unchanged. Output includes `repo_hooks_action`
+(`installed`/`skipped`/`failed`), `repo_hooks_repo_root`,
+`repo_hooks_error`, and `repo_hooks_hint`.
+
+### `install-copilot.ps1 [-SettingsPath <file>] [-InstructionsRoot <dir>] [-Remove] [-NoPersist] [-RepoHooks Ask|Install|Skip] [-RepoPath <path>]`
+
 One-time user-scope Copilot setup (no per-repo config): records
 `VAULT_HOME`, registers MCP server `vault_mcp/vault/server.py` under VS
 Code user settings (`mcp.servers.vault`), installs global instruction
 asset (`copilot/instructions/vault-global.instructions.md`), and runs a
 post-install `vault-health.ps1` check. `-Remove` unregisters MCP +
 instruction entry and deletes the installed instruction file.
+
+This installer does **not** modify Claude permission-bypass settings.
+Per-call approval prompts in Claude are controlled only by
+`install-skill.ps1 -PermissionHook ...`, where the bypass is explicit,
+opt-in, and user-responsibility.
+
+`-RepoHooks` controls whether repo freshness hooks are installed during
+Copilot setup. `Ask` (default) prompts only in interactive runs; in
+non-interactive runs it safely skips. `Install` runs
+`install-git-hooks.ps1 -Path <RepoPath>` so `post-commit`/`post-merge`
+trigger background incremental reindexing. `Skip` leaves hooks
+unchanged. Output includes `repo_hooks_action`
+(`installed`/`skipped`/`failed`), `repo_hooks_repo_root`,
+`repo_hooks_error`, and `repo_hooks_hint`.
 
 ## Prerequisites
 

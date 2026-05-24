@@ -17,7 +17,7 @@
 - **AD-5 — Shared warm embedding service (RESOLVED via B-1).** One long-running **llama.cpp embeddings server** (`server-cuda`, `--embeddings --pooling last`) serving `nomic-embed-code` Q4_K_M, GPU, model kept warm, indexing jobs serialized to protect 16 GB VRAM. (Ollama removed.)
 - **AD-6 — Freshness by commit SHA, not date.** The vault stores the indexed HEAD SHA per repo. Staleness = `stored_sha != git rev-parse HEAD`. Enables incremental reindex via `git diff --name-only`.
 - **AD-8 — Supported languages (initial, locked): C#, Python, JavaScript, TypeScript.** The indexer image bundles exactly these tree-sitter grammars. Files in unsupported languages are skipped (not error) and counted as `skipped` in stats so it's visible what was ignored. Adding a language = add its grammar + chunking rules + rebuild the indexer image; no re-index of other languages needed.
-- **AD-9 — Introspection is first-class, separate from search.** Beyond semantic `/api/query`, the system exposes read-only inspection of *what has been indexed* (per repo: indexed SHA + time, file count, chunk count, per-language breakdown, skipped files, and a listable file/chunk inventory). This is a distinct surface (`/api/repos/{repo_id}/stats`, `/api/repos/{repo_id}/files`) and its own skill command — not overloaded onto search. Future Web UI (5.3) is a thin client over this.
+- **AD-9 — Introspection is first-class, separate from search.** Beyond semantic `/api/query`, the system exposes read-only inspection of _what has been indexed_ (per repo: indexed SHA + time, file count, chunk count, per-language breakdown, skipped files, and a listable file/chunk inventory). This is a distinct surface (`/api/repos/{repo_id}/stats`, `/api/repos/{repo_id}/files`) and its own skill command — not overloaded onto search. Future Web UI (5.3) is a thin client over this.
 - **AD-7 — Embedding model = `nomic-embed-code` Q4_K_M, dim 3584 (RESOLVED via B-1).** Same model for index + query. Vector dimension **3584** permanently sets Qdrant collection size (cosine) — changing model later = drop + re-index everything. Verified working via llama.cpp `--pooling last`; the single dimension constant lives in `models.py`. See also **AD-10** (prompt-prefix asymmetry).
 
 ---
@@ -32,15 +32,15 @@ The original Ollama all-zero result was **purely a missing pooling configuration
 
 ### Evidence (verified spike, llama.cpp server-cuda, local Q4_K_M GGUF)
 
-| Check | Result | Verdict |
-| --- | --- | --- |
-| Vector dimension | **3584** | ← the single `models.py` constant |
-| Non-zero / L2 magnitude | 3584/3584, mag = 1.0 | healthy (vs Ollama 0/3584) |
-| Identical code | cos = 1.000 | deterministic, correct |
-| Related code (2 factorial impls) | cos = 0.52 | strong |
-| Unrelated code (factorial vs SQL) | cos = 0.08 | near-zero |
-| NL query → matching code | cos = 0.51 | strong retrieval signal |
-| NL query → non-matching code | cos = 0.015 | near-zero |
+| Check                             | Result               | Verdict                           |
+| --------------------------------- | -------------------- | --------------------------------- |
+| Vector dimension                  | **3584**             | ← the single `models.py` constant |
+| Non-zero / L2 magnitude           | 3584/3584, mag = 1.0 | healthy (vs Ollama 0/3584)        |
+| Identical code                    | cos = 1.000          | deterministic, correct            |
+| Related code (2 factorial impls)  | cos = 0.52           | strong                            |
+| Unrelated code (factorial vs SQL) | cos = 0.08           | near-zero                         |
+| NL query → matching code          | cos = 0.51           | strong retrieval signal           |
+| NL query → non-matching code      | cos = 0.015          | near-zero                         |
 
 Match vs non-match separation ≈ 34×. Model loads on GPU in ~14 s; 4.38 GB Q4_K_M leaves large headroom on the 16 GB RTX 4080. E-O2/E-GT were **not run** — E-O4 alone is decisive (gives both a working lightweight runtime and unambiguous correctness); heavier experiments would only re-confirm a solved question.
 
@@ -112,7 +112,7 @@ Proven file = Ollama blob `sha256-4354a73ee9ff5d811efe552a515dfd518667ff25fdfc4e
 2. User ensures the vault stack is running (`docker compose up -d`, or always-on). Skill verifies via `scripts/vault-health.ps1`.
 3. User asks Claude to check registration. Claude runs `scripts/repo-id.ps1` then `scripts/vault-status.ps1`; if not registered, offers to index via `scripts/index-repo.ps1`.
 4. Claude compares stored indexed SHA (from `vault-status`) vs local `git rev-parse HEAD` (AD-6). If stale, Claude tells the user how many commits / which files changed and offers a (incremental) reindex.
-5. Claude offers to install git hooks (`scripts/install-git-hooks.ps1`) for automatic reindex on commit/merge.
+5. Claude offers to install git hooks (`scripts/install-git-hooks.ps1`) for automatic reindex on commit/merge. The skill installer flow should also prompt to install these repo freshness hooks so users can enable auto-refresh during setup.
 6. Background reindex completion: `index-repo.ps1` returns a job/container id; `scripts/index-status.ps1` reports state via `docker wait`/`docker inspect`. Claude can poll it as a tracked background task and report completion **within the open session**. (No detached OS notification when Claude is closed — documented limitation.)
 
 ---
@@ -176,9 +176,9 @@ _Deliverable: `/vault-*` skill that delegates to named, individually-debuggable 
 > **Sequencing (revised 2026-05-17 — supersedes original 2.1→2.2→2.3):**
 > Build the **scripts (with error handling intrinsic) first, then write
 > SKILL.md last** against their frozen contracts. Rationale: AD-4 makes
-> SKILL.md *pure delegation* — its entire content is a function of the
+> SKILL.md _pure delegation_ — its entire content is a function of the
 > scripts' final arg/JSON/exit-code contracts, and error handling lives
-> *inside* the scripts (consistent exit codes), not the skill. Writing
+> _inside_ the scripts (consistent exit codes), not the skill. Writing
 > the skill first means writing it against contracts that don't exist
 > yet and rewriting it twice as the scripts and their error handling
 > settle. The command surface itself was already designed at planning
@@ -200,6 +200,7 @@ Each script: clear name, single responsibility, runnable standalone with documen
 - `scripts/query.ps1 <path> <query>` — resolve repo_id, call `/api/query`, return formatted results.
 - `scripts/vault-inspect.ps1 <path> [--files] [--language <lang>]` — resolve repo_id, call `/api/repos/{repo_id}/stats` (and `/files` with `--files`); returns indexed SHA/time, file + chunk counts, per-language breakdown, skipped count, optional file inventory. Read-only (AD-9).
 - `scripts/install-git-hooks.ps1 <path> [--remove]` — writes a minimal POSIX `post-commit`/`post-merge` hook (git runs hooks via bundled `sh` on Windows) that fires `index-repo` non-blocking; hook degrades gracefully if the stack is down.
+- `scripts/install-skill.ps1 ...` should include an explicit, fail-safe prompt to install repo freshness hooks (`install-git-hooks.ps1`) for a chosen repo path during setup; non-interactive runs default to skip.
 - **Error handling & fallbacks (intrinsic to each script, consistent exit codes — never in the skill):** stack down → restart instructions; repo not registered → offer `/vault-index`; not a git repo → explain; indexer non-zero exit → surface `docker logs`; VRAM/queue busy → retry guidance.
 - **Owner:** Claude
 - **Dependencies:** Phase 1 complete
@@ -224,9 +225,9 @@ Each script: clear name, single responsibility, runnable standalone with documen
 
 > **Resolved 2026-05-17 — CI-vs-PowerShell (Option B chosen):** the CI
 > runner is Linux + `pytest`, with no Docker stack/GPU. Script logic
-> splits into *pure* (repo_id contract, exit-code/JSON emitter, arg
+> splits into _pure_ (repo_id contract, exit-code/JSON emitter, arg
 > validation, hook-file generation — mockable, no stack) vs
-> *integration* (real index/query — needs the GPU stack). Decision:
+> _integration_ (real index/query — needs the GPU stack). Decision:
 > automate the pure half with **Pester** in a **second CI job** running
 > `pwsh` on the free Linux runner (git/docker/HTTP mocked); keep the
 > end-to-end `smoke_test.ps1` as a **documented manual gate** (a
@@ -273,7 +274,7 @@ Each script: clear name, single responsibility, runnable standalone with documen
   push to `main` / dispatch; smoke first; tag `latest`.
 - **Deferred — rationale:** this is a single-user, single-machine local
   tool. Both images already build locally (`docker compose up -d
-  --build`; `index-repo.ps1 -Build` → `vault-indexer:local`) and Docker
+--build`; `index-repo.ps1 -Build` → `vault-indexer:local`) and Docker
   caches the layers. GHCR publishing only adds value with multiple
   machines, external consumers, or a need for frozen reproducible
   artifacts — none of which apply today. Same "single user; defer"
@@ -331,19 +332,19 @@ Phase 5: future
 
 ## Validation Checkpoints
 
-| Phase | Checkpoint        | Success Criteria                                              |
-| ----- | ----------------- | ------------------------------------------------------------- |
-| 1.1   | API up            | `/api/status` 200, `/api/repos` `[]` on fresh start           |
-| 1.2   | Indexer works     | `docker run` indexes C#/Py/JS/TS fixture; collection + SHA + per-lang stats + skipped count present |
-| 1.3   | Query works       | `/api/query/{repo_id}` returns ranked results                 |
-| 1.4   | Stack works       | `docker compose up -d` healthy; indexer reaches qdrant/embedder |
-| 2.1   | Scripts standalone| Each script runs correctly invoked by hand with args; each error scenario gives a clear message + consistent exit code |
-| 2.2   | Skill defined     | Commands appear; SKILL.md contains no logic, only delegation   |
-| 2.E   | End-to-end        | `/vault-search` returns results; `/vault-inspect` shows correct counts/languages for the repo |
-| 3.1   | Tests pass        | Unit/integration/E2E + per-script tests green                 |
-| 3.2   | Manual multi-proj | 2+ repos isolated by repo_id; stale detect + hooks work       |
-| 3.3   | Docs complete     | Script contracts documented; new user can follow setup        |
-| 4.x   | CI/CD             | Both images build, push to GHCR, versioned, secrets safe      |
+| Phase | Checkpoint         | Success Criteria                                                                                                       |
+| ----- | ------------------ | ---------------------------------------------------------------------------------------------------------------------- |
+| 1.1   | API up             | `/api/status` 200, `/api/repos` `[]` on fresh start                                                                    |
+| 1.2   | Indexer works      | `docker run` indexes C#/Py/JS/TS fixture; collection + SHA + per-lang stats + skipped count present                    |
+| 1.3   | Query works        | `/api/query/{repo_id}` returns ranked results                                                                          |
+| 1.4   | Stack works        | `docker compose up -d` healthy; indexer reaches qdrant/embedder                                                        |
+| 2.1   | Scripts standalone | Each script runs correctly invoked by hand with args; each error scenario gives a clear message + consistent exit code |
+| 2.2   | Skill defined      | Commands appear; SKILL.md contains no logic, only delegation                                                           |
+| 2.E   | End-to-end         | `/vault-search` returns results; `/vault-inspect` shows correct counts/languages for the repo                          |
+| 3.1   | Tests pass         | Unit/integration/E2E + per-script tests green                                                                          |
+| 3.2   | Manual multi-proj  | 2+ repos isolated by repo_id; stale detect + hooks work                                                                |
+| 3.3   | Docs complete      | Script contracts documented; new user can follow setup                                                                 |
+| 4.x   | CI/CD              | Both images build, push to GHCR, versioned, secrets safe                                                               |
 
 ---
 
@@ -410,13 +411,13 @@ local_ai_code_vault/
 
 ## Estimated Timeline
 
-| Phase | Tasks    | Effort               | Timeline                           |
-| ----- | -------- | -------------------- | ---------------------------------- |
-| 1     | 1.1–1.4  | High (core)          | ~3–4 sessions (Claude)             |
-| 2     | 2.1–2.3  | Medium (skill+scripts)| ~2 sessions (Claude)              |
-| 3     | 3.1–3.3  | Medium               | ~1–2 sessions (Claude + user)      |
-| 4     | 4.2 only | Low (4.1/4.3 deferred)| ~0.5 session (Claude)             |
-| 5     | Optional | Varies               | Future                             |
+| Phase | Tasks    | Effort                 | Timeline                      |
+| ----- | -------- | ---------------------- | ----------------------------- |
+| 1     | 1.1–1.4  | High (core)            | ~3–4 sessions (Claude)        |
+| 2     | 2.1–2.3  | Medium (skill+scripts) | ~2 sessions (Claude)          |
+| 3     | 3.1–3.3  | Medium                 | ~1–2 sessions (Claude + user) |
+| 4     | 4.2 only | Low (4.1/4.3 deferred) | ~0.5 session (Claude)         |
+| 5     | Optional | Varies                 | Future                        |
 
 **Total: ~7–9 sessions for Phases 1–4**
 

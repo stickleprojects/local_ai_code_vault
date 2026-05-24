@@ -6,19 +6,38 @@ first, then by surface. Stack-level (model/GPU) issues are covered in
 [README_SETUP.md](../README_SETUP.md#troubleshooting) — not duplicated
 here.
 
+## Client scope
+
+- **Claude-only topics:** per-call `/vault-*` approval prompts,
+  `-PermissionHook`, `~/.claude/settings.json`, and `PreToolUse` hook
+  behavior.
+- **Copilot topics:** MCP installation/use via `install-copilot.ps1`.
+  Copilot setup does not use the Claude `-PermissionHook` flow.
+
 ## By exit code
 
-| code | name | What it means → do this |
-|---|---|---|
-| 0 | Ok | success |
-| 2 | Usage | bad/missing arguments — the `error` field states what to fix |
-| 3 | NotGitRepo | path missing or not inside a git work tree — run from inside a repo, or `git init` |
-| 4 | StackDown | vault API unreachable — `docker compose up -d` (see [SETUP.md](SETUP.md)); don't retry blindly |
-| 5 | NotRegistered | repo not indexed yet — run `/vault-index` (or `index-repo.ps1`) |
-| 6 | Docker | docker missing / indexer image missing / indexer failed — see below |
-| 7 | ApiError | API reachable but returned non-2xx — surface the `error`; check `docker compose logs api` |
+| code | name          | What it means → do this                                                                        |
+| ---- | ------------- | ---------------------------------------------------------------------------------------------- |
+| 0    | Ok            | success                                                                                        |
+| 2    | Usage         | bad/missing arguments — the `error` field states what to fix                                   |
+| 3    | NotGitRepo    | path missing or not inside a git work tree — run from inside a repo, or `git init`             |
+| 4    | StackDown     | vault API unreachable — `docker compose up -d` (see [SETUP.md](SETUP.md)); don't retry blindly |
+| 5    | NotRegistered | repo not indexed yet — run `/vault-index` (or `index-repo.ps1`)                                |
+| 6    | Docker        | docker missing / indexer image missing / indexer failed — see below                            |
+| 7    | ApiError      | API reachable but returned non-2xx — surface the `error`; check `docker compose logs api`      |
 
 ## Common symptoms
+
+**Vault search did not run (or fell back to normal file search).**
+Shared search orchestration now uses `scripts/query-smart.ps1`:
+
+- If vault is reachable but the repo is unindexed, callers should prompt
+  once and index by default unless you explicitly say `do not index`.
+- If vault is unavailable, indexing is declined, or semantic hits are
+  empty, callers should continue normal workspace file search/read flow
+  and explain the reason (`fallback_message`).
+
+This is a safety measure: vault is preferred, not mandatory.
 
 **`/vault-*` says the skill can't find scripts / `VAULT_HOME` unset.**
 Run `pwsh -NoProfile -File scripts/install-skill.ps1` from your vault
@@ -32,8 +51,13 @@ PowerShell-tool permission matcher works on the parsed AST, so a
 matches and cannot suppress the prompt. The fix is a **scoped
 `PreToolUse` hook** in your **user** settings
 `~/.claude/settings.json` (user-level, not the project's
-`.claude/settings.json` — the skill runs from *other* repos). This is
+`.claude/settings.json` — the skill runs from _other_ repos). This is
 a **one-time, global** step; it is not per-repo.
+
+This symptom is **Claude-specific** in this project. Copilot setup via
+`scripts/install-copilot.ps1` does not add/remove Claude
+`PreToolUse` hooks, and the `-PermissionHook` flow described below is
+not part of Copilot installation.
 
 **Easiest:** let the installer pre-approve it (explicit grant only):
 
@@ -42,16 +66,18 @@ pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
 ```
 
 This is **fail-closed**: it writes the hook only on an explicit grant
-(that flag, or answering `y` to the interactive prompt) and backs up
+(that flag, or typing exactly `yes` at the interactive prompt) and backs up
 `settings.json` first. A non-interactive run, a `no`, a malformed
 `settings.json`, or any write error leaves the prompt **in place**
 (`permission_hook_action` = `skipped`/`failed`) — the security is never
 bypassed by accident. Restart Claude Code afterwards (hooks load at
 session start).
 
-**Good antivirus citizen.** Some AV products (e.g. Bitdefender, or
-Defender via AMSI) flag the auto-allow hook. We deal with this
-*honestly and without ever weakening your antivirus*:
+### Good antivirus citizen (Claude only)
+
+Some AV products (e.g. Bitdefender, or Defender via AMSI) flag the
+auto-allow hook. We deal with this _honestly and without ever weakening
+your antivirus_:
 
 - The hook command is kept in a **data file**
   (`scripts/vault-permission-hook.json`), never inlined into a `.ps1`,
@@ -66,10 +92,10 @@ Defender via AMSI) flag the auto-allow hook. We deal with this
   Interactively it asks; non-interactively it declines.
 
 The sanctioned fix is for **you** to allowlist it in your AV (we never
-do this for you). In Bitdefender: *Protection → Antivirus → Settings →
-Manage exceptions → Add an exception* for your vault clone's `scripts`
+do this for you). In Bitdefender: _Protection → Antivirus → Settings →
+Manage exceptions → Add an exception_ for your vault clone's `scripts`
 folder and for `~/.claude/settings.json` (and, if AMSI-scanned,
-re-allow the blocked item from *Notifications*). Then re-run
+re-allow the blocked item from _Notifications_). Then re-run
 `-PermissionHook Install`. To proceed despite the block (you accept it
 may be quarantined until you add the exception), pass the explicit
 override:
@@ -132,7 +158,7 @@ pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
 ```
 
 **Undo / remove the permission hook.** `install-skill.ps1 -Remove`
-uninstalls the *skill* **and removes the pre-approval hook** (fail-safe
+uninstalls the _skill_ **and removes the pre-approval hook** (fail-safe
 — this re-enables the prompt). It backs up `settings.json` first,
 drops only the `hooks.PreToolUse` entry whose `command` contains
 `local_ai_code_vault`, and leaves every other hook intact; an

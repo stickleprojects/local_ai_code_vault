@@ -48,6 +48,70 @@ def test_run_tool_builds_expected_args(monkeypatch):
     ]
 
 
+def test_run_tool_builds_expected_args_for_vault_savings(monkeypatch):
+    monkeypatch.setenv("VAULT_HOME", "/tmp/vault-home")
+    captured = {}
+
+    def fake_run(command, capture_output, text, check):
+        captured["command"] = command
+        return SimpleNamespace(stdout='{"ok":true,"code":0}', stderr="", returncode=0)
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    payload, code = server.run_tool("vault_savings", {"path": "/repo", "days": 30})
+
+    assert code == 0
+    assert payload["ok"] is True
+    expected_script = str(Path("/tmp/vault-home").resolve() / "scripts" / "vault-savings.ps1")
+    assert captured["command"] == [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        expected_script,
+        "-Path",
+        "/repo",
+        "-Days",
+        "30",
+    ]
+
+
+def test_run_tool_builds_expected_args_for_vault_search_smart(monkeypatch):
+    monkeypatch.setenv("VAULT_HOME", "/tmp/vault-home")
+    captured = {}
+
+    def fake_run(command, capture_output, text, check):
+        captured["command"] = command
+        return SimpleNamespace(stdout='{"ok":true,"code":0}', stderr="", returncode=0)
+
+    monkeypatch.setattr(server.subprocess, "run", fake_run)
+    payload, code = server.run_tool(
+        "vault_search",
+        {
+            "query": "rename surname",
+            "path": "/repo",
+            "limit": 5,
+            "doNotIndex": True,
+            "build": True,
+        },
+    )
+
+    assert code == 0
+    assert payload["ok"] is True
+    expected_script = str(Path("/tmp/vault-home").resolve() / "scripts" / "query-smart.ps1")
+    assert captured["command"] == [
+        "pwsh",
+        "-NoProfile",
+        "-File",
+        expected_script,
+        "rename surname",
+        "-Path",
+        "/repo",
+        "-Limit",
+        "5",
+        "-DoNotIndex",
+        "-Build",
+    ]
+
+
 def test_run_tool_returns_error_for_unknown():
     payload, code = server.run_tool("unknown", {})
     assert code == 2
@@ -87,3 +151,9 @@ def test_write_message_emits_jsonl(monkeypatch):
     server._write_message({"jsonrpc": "2.0", "id": 1, "result": {}})
     assert output.getvalue().endswith(b"\n")
     assert b"Content-Length:" not in output.getvalue()
+
+
+def test_tools_list_includes_vault_savings():
+    tools = server._tool_list_result()["tools"]
+    names = {t["name"] for t in tools}
+    assert "vault_savings" in names

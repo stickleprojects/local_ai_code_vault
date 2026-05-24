@@ -120,3 +120,53 @@ function Get-GitHead {
     if ($LASTEXITCODE -ne 0) { return $null }
     "$sha".Trim()
 }
+
+function Get-VaultBodyValue {
+    param(
+        [Parameter(Mandatory)]$Body,
+        [Parameter(Mandatory)][string]$Key
+    )
+    if ($null -eq $Body) { return $null }
+    # Accept hashtable, IDictionary, or object.
+    if ($Body -is [hashtable]) {
+        if ($Body.ContainsKey($Key)) { return $Body[$Key] }
+        return $null
+    }
+    if ($Body -is [System.Collections.IDictionary]) {
+        if ($Body.Contains($Key)) { return $Body[$Key] }
+        return $null
+    }
+    $prop = $Body.PSObject.Properties[$Key]
+    if ($null -eq $prop) { return $null }
+    $prop.Value
+}
+
+function Get-VaultTokenEstimate {
+    # APPROXIMATE token count. This is NOT Claude's tokenizer (that is
+    # not available locally), so every number derived from it is an
+    # ESTIMATE — never present it as exact. Heuristic: ~4 characters per
+    # token, the common rule of thumb for English + code. Chosen for
+    # being simple, stable and reproducible (the savings ledger must be
+    # deterministic), not for precision.
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return 0 }
+    [int][math]::Ceiling($Text.Length / 4.0)
+}
+
+function Get-VaultStatsDir {
+    # Where the per-repo savings ledger lives. Host-side, OUTSIDE any
+    # indexed repo (never write stats into a searched repo / the vault
+    # clone). Override with $env:VAULT_STATS_DIR. Created on demand.
+    if ($env:VAULT_STATS_DIR) { $base = $env:VAULT_STATS_DIR }
+    else {
+        $lad = [Environment]::GetFolderPath('LocalApplicationData')
+        if ([string]::IsNullOrWhiteSpace($lad)) {
+            $lad = Join-Path ([Environment]::GetFolderPath('UserProfile')) '.local/share'
+        }
+        $base = Join-Path $lad 'vault/stats'
+    }
+    if (-not (Test-Path -LiteralPath $base)) {
+        $null = New-Item -ItemType Directory -Force -Path $base
+    }
+    $base
+}

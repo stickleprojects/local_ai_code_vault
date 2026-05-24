@@ -52,23 +52,44 @@ TOOL_DEFS: dict[str, dict[str, Any]] = {
         ],
     },
     "vault_search": {
-        "description": "Run scripts/query.ps1 for semantic search results.",
+        "description": "Run scripts/query-smart.ps1 for semantic search with auto-index + fallback.",
         "schema": {
             "type": "object",
             "properties": {
                 "query": {"type": "string"},
                 "path": {"type": "string", "default": "."},
                 "limit": {"type": "integer", "minimum": 1},
+                "doNotIndex": {"type": "boolean", "default": False},
+                "build": {"type": "boolean", "default": False},
             },
             "required": ["query"],
             "additionalProperties": False,
         },
-        "script": "query.ps1",
+        "script": "query-smart.ps1",
         "argv": lambda a: [
             a["query"],
             "-Path",
             a.get("path", "."),
             *_optional_arg(a, "limit", "-Limit"),
+            *(["-DoNotIndex"] if a.get("doNotIndex") else []),
+            *(["-Build"] if a.get("build") else []),
+        ],
+    },
+    "vault_savings": {
+        "description": "Run scripts/vault-savings.ps1 for token-savings estimates.",
+        "schema": {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "default": "."},
+                "days": {"type": "integer", "minimum": 1, "maximum": 365},
+            },
+            "additionalProperties": False,
+        },
+        "script": "vault-savings.ps1",
+        "argv": lambda a: [
+            "-Path",
+            a.get("path", "."),
+            *_optional_arg(a, "days", "-Days"),
         ],
     },
     "vault_inspect": {
