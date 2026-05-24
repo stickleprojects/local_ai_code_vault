@@ -149,8 +149,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "vector_count": len(fixture.vectors),
         }
 
-    @app.post("/v1/embeddings")
-    def embeddings(request: EmbeddingRequest) -> Response | dict[str, Any]:
+    @app.post("/v1/embeddings", response_model=None)
+    def embeddings(request: EmbeddingRequest):
         body = request.model_dump(exclude_none=True)
         if proxy is not None:
             status_code, payload = proxy.handle(body)

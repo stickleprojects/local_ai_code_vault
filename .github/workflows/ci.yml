@@ -114,7 +114,7 @@ jobs:
 
       - name: Start replay stack
         if: ${{ hashFiles('eval/vectors.json') != '' }}
-        run: docker compose -f docker-compose.yml -f docker-compose.replay.yml up -d --wait
+        run: MODEL_SHA256=replay-skip docker compose -f docker-compose.yml -f docker-compose.replay.yml up -d --wait
 
       - name: Build indexer image
         if: ${{ hashFiles('eval/vectors.json') != '' }}
@@ -127,4 +127,4 @@ jobs:
 
       - name: Stop replay stack
         if: ${{ always() && hashFiles('eval/vectors.json') != '' }}
-        run: docker compose -f docker-compose.yml -f docker-compose.replay.yml down -v
+        run: MODEL_SHA256=replay-skip docker compose -f docker-compose.yml -f docker-compose.replay.yml down -v

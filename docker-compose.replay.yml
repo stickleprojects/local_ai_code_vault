@@ -1,12 +1,13 @@
 services:
-  model-fetch:
-    profiles: ["gpu-only"]
+  model-fetch: !reset null
 
   embedder:
+    image: vault-embedder-stub:local
     build:
       context: .
       dockerfile: eval/embedder-stub/Dockerfile
-    depends_on: []
+    depends_on: !reset []
+    deploy: !reset null
     environment:
       EMBEDDER_STUB_MODE: replay
       EMBEDDER_STUB_FIXTURE: /fixtures/vectors.json
@@ -21,4 +22,14 @@ services:
       - 0.0.0.0
       - --port
       - "8080"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - import urllib.request; urllib.request.urlopen("http://localhost:8080/healthz")
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 2s
     restart: unless-stopped

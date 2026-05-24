@@ -43,6 +43,7 @@ PR 6 adds a GPU-free replay mode for CI:
 - The stub replays vectors from `eval/vectors.json` by `sha256(input_text)`.
 - On any missing key it returns HTTP 503 naming the missing hash; it never invents a vector.
 - CI job `eval-replay` skips cleanly until `eval/vectors.json` is committed, then becomes the per-PR replay gate.
+- Because `docker-compose.yml` still interpolates `MODEL_SHA256`, replay invocations set a dummy value (`MODEL_SHA256=replay-skip`) while `model-fetch` is reduced to a fast no-op.
 
 ## Record `eval/vectors.json` (maintainer / GPU machine)
 
