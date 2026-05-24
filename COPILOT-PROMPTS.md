@@ -15,12 +15,25 @@ The ordering is deliberate:
 4. **PR 4 — Symbol-aware ranking** (language-general; the risky one — explicitly last and explicitly measured). — ⏳ **NEXT.**
 5. **PR 5+ — Per-language definition enrichment** (deferred follow-ups; one language at a time, each separately measured). — ⏳ **DEFERRED.**
 
+**Separate track — Eval-in-CI (PR 6–7).** Independent of the risk-ordered quality
+sequence above; either can land any time after PR 1. They make the retrieval eval
+runnable in CI *without* the GPU box, so a change like PR 4 gets a real eval gate
+instead of a hand-waved "couldn't run it in the sandbox" note. See the sections
+near the bottom.
+
 > **Status (2026-05-24):** PR 1 and PR 2 are merged to `main`; PR 3 is an open
 > draft (#29), not yet merged. PR 4 is the next delegated unit (now folds in the
 > `indexer/languages/` reorg as its first commit). Note: the C# eval case
 > `definition-above-callsite-csharp` and the `csharp/` corpus pair were added
 > *after* #27 generated `baseline.json`, so the baseline must be regenerated
 > (PR 4's `-UpdateBaseline`, run against the stack) to include them.
+>
+> **Eval-gate dependency (added 2026-05-24):** PR 4 cannot be verified by the
+> Copilot agent on its own — the sandbox has no GPU / no huggingface.co. Land
+> **PR 6** (the GPU-free `eval-replay` job) first; then PR 4's fail → pass flip is
+> provable in CI. The current open PR 4 (#31) predates this and only carries
+> unit-test proof, so it needs the maintainer to either land PR 6 and re-verify, or
+> run the live eval by hand before merge.
 
 The **savings-metric** recommendation is **not** delegated — it's a product
 decision (what baseline is "right"). Decide the formula first, then optionally
@@ -36,16 +49,21 @@ labels — those encode "correct" (see EVAL-HARNESS-SPEC §7).
 > **Definition of done — do not declare complete until ALL hold:**
 > 1. CI is green. Run `gh pr checks <PR>` and confirm every check passes; if any
 >    fail, fix the root cause and re-check. Do not declare done on red or pending CI.
-> 2. The eval harness (`eval/run-eval.ps1`) runs and you have pasted its
+> 2. The eval harness (`eval/run-eval.ps1`) is exercised and you have pasted its
 >    **before vs after** aggregate numbers into the PR description. (PR 1 builds
->    the harness; PRs 2–4 must run it.)
+>    the harness; PRs 2–4 must run it.) The agent runs it via the GPU-free
+>    `eval-replay` CI job (PR 6); see item 5 for what to do until that job exists.
 > 3. No regression: no `must_pass` eval case flips from pass→fail, and no
 >    aggregate metric drops below `baseline.json` beyond tolerance.
 > 4. Stay within the stated scope. Do not modify files outside it.
-> 5. The vault stack must be up to run the eval (`docker compose up -d`;
->    `vault-health.ps1` should report `reachable:true`). If you cannot run the
->    stack in the CI sandbox, say so explicitly and run the eval locally,
->    pasting the output — do not silently skip it.
+> 5. The eval must be exercised — but the agent sandbox has **no GPU and no
+>    huggingface.co access**, so it cannot bring up the live stack
+>    (`docker compose up -d` will fail at `model-fetch`/`embedder`). The
+>    GPU-free path is the `eval-replay` CI job (PR 6): run it and read its
+>    result. If that job does not yet exist on your branch, say so explicitly
+>    and leave the live eval to the maintainer — **do not** claim a live eval
+>    you did not run, and **do not** silently skip. Reporting "I cannot run the
+>    live stack here" is the honest, expected outcome, not a failure to hide.
 
 ---
 
@@ -145,7 +163,7 @@ document vault as discovery-not-completeness**.
 
 ---
 
-## PR 4 — Symbol-aware ranking (language-general) — HIGHEST value, HIGHEST risk, do last — ⏳ NEXT
+## PR 4 — Symbol-aware ranking (language-general) — HIGHEST value, HIGHEST risk, do last — ⏳ NEXT (depends on PR 6 for its eval gate)
 
 Addresses the **language-general** half of analysis recommendation **HIGH — fix
 definition under-ranking**. The per-language doc/fixture enrichment is split out
@@ -182,21 +200,31 @@ supported languages, not just Python.
 > no docstring/JSDoc/XML-doc parsing) — that is PR 5+. This PR is purely
 > name-match → definition-boost, which generalizes.
 >
-> **This change is unverifiable without the eval.** You MUST:
+> **This change is unverifiable without the eval — and the agent sandbox cannot
+> run the live stack (no GPU / no huggingface.co).** This PR therefore **depends
+> on PR 6** (the GPU-free `eval-replay` job), which is how the agent runs the eval.
+> PR 4 changes no embedding *inputs* (commit 1 is behaviour-neutral so chunk texts
+> are unchanged; `symbol` lives in the payload; the boost is applied after
+> retrieval), so PR 6's recorded `vectors.json` stays valid here — replay
+> re-indexes and re-ranks against the same vectors and proves the flip
+> deterministically. You MUST:
 > - Commit step 1 (the `languages/` refactor) first, with `tests/test_chunker.py`
 >   passing **unchanged** and no eval-metric movement — proof it is behaviour-
 >   neutral before any ranking change rides on top.
-> - Re-index the corpus after the change (ranking depends on the index).
-> - Run `eval/run-eval.ps1` and paste **before vs after** per-case ranks and
->   aggregate Recall@k / MRR / DefinitionRank.
+> - Re-index the corpus after the change (ranking depends on the index) — the
+>   `eval-replay` job does this each run.
+> - The `eval-replay` job must run the eval; paste its **before vs after** per-case
+>   ranks and aggregate Recall@k / MRR / DefinitionRank into the PR.
 > - Both `definition-above-callsite` (Python) **and**
 >   `definition-above-callsite-csharp` must flip from fail → pass — the C# case is
 >   the proof the boost is language-general, not Python-only. No other `must_pass`
 >   case may regress; aggregate MRR must not drop below baseline. (The NL
 >   `definition-fixture` / `fixture-discovery-natural` cases are **not** expected
 >   to flip here — they need PR 5's doc enrichment.)
-> - If you cannot demonstrate the eval improvement, the PR is not done — green CI
->   alone does NOT prove this change worked.
+> - The unit tests (`test_definition_boost_*`) are necessary but **not** sufficient:
+>   green unit CI alone does NOT prove this change worked. The fail → pass flip must
+>   be shown by the `eval-replay` job — or, if PR 6 is not yet merged, by a
+>   maintainer live run (do not fabricate or skip it).
 >
 > **Scope:** `indexer/languages/` extraction (behaviour-neutral, first commit) +
 > per-chunk symbol extraction + query-side boosting + re-baseline
@@ -239,6 +267,130 @@ eval cases.
 > add `doc_comment(node)` to that language's `LanguageSpec`; don't change the boost.
 >
 > [+ Standing requirements block]
+
+---
+
+# Eval-in-CI track (PR 6–7) — run the eval without the GPU box
+
+The retrieval eval can't run in CI today because the stack needs a GPU and a ~4 GB
+GGUF — but **only the `embedder` service** needs them. `qdrant` and `api` are CPU
+services, and both `api` (`EMBEDDER_URL`) and the indexer (`--embedder-url`) reach
+the embedder by the service name **`embedder:8080`**. So each feature below ships as
+a Docker Compose override of **just the `embedder` service**, leaving the rest of the
+stack and `eval/run-eval.ps1` untouched.
+
+The two are complementary, not alternatives — build **both**:
+
+- **PR 6 (replay)** — deterministic, seconds, no model at all. The *per-PR required
+  gate*. Catches ranking-logic regressions (exactly what PR 4 changes).
+- **PR 7 (CPU nightly)** — the *real* model on CPU, slow, scheduled. The drift
+  detector that catches embedder/model/index changes PR 6's frozen vectors can't.
+
+## Should the Copilot agent build these?
+
+Yes — both are bounded and CI-verifiable, which is what the agent does well. Two
+caveats are baked into the prompts:
+
+- **The agent's sandbox has no GPU and can't reach huggingface.co; GitHub-hosted
+  Actions runners have neither limit** (full internet, ~16 GB RAM). So the real
+  eval runs happen *on Actions*, not in the agent's sandbox — the agent verifies via
+  the PR's workflow run, not a local run. The standing "stack must be up locally"
+  DoD clause is therefore relaxed for both PRs.
+- **PR 6's real vector fixture (`eval/vectors.json`) must be recorded once on the
+  maintainer's GPU box** — the agent cannot produce it. Record it first and commit
+  it to the PR branch, *then* hand off, so the agent can watch the `eval-replay`
+  job go green. (The agent still builds the recorder script, the stub, the override,
+  the workflow, and stub tests.)
+
+---
+
+## PR 6 — Replayable eval: recorded-vector embedder stub (per-PR gate) — ⏳ TODO
+
+> **Task:** Make `eval/run-eval.ps1` runnable in CI with **no GPU and no model
+> download**, deterministically, by replaying *recorded* embeddings — so the eval
+> can become a required per-PR check. Build the machinery; the maintainer records
+> the real vectors (see "Human step").
+>
+> 1. **Stub embedder** (`eval/embedder-stub/` — small Python service + Dockerfile).
+>    Implements the OpenAI-compatible `POST /v1/embeddings` with the *same* response
+>    shape llama.cpp returns (`{"data":[{"embedding":[...]}, ...], "model":...}`),
+>    one vector per input in the batch. It loads a fixture and looks each input up by
+>    `sha256(input_string)`. On any miss it returns HTTP 503 naming the missing hash
+>    and telling the caller to regenerate the fixture — **never** a fabricated vector.
+>    Vectors are full `EMBED_DIM` (3584) so the existing dim assertions in
+>    `HttpEmbedder` / `HttpQueryEmbedder` pass.
+> 2. **Recorder** (`eval/record-vectors.ps1`) — run by a human on a machine with the
+>    real GPU stack up. Capture the *exact* strings sent to `/v1/embeddings` during
+>    one real `eval/run-eval.ps1` run (run the recorder as a logging pass-through
+>    proxy in front of the real `embedder`, so keys match the live path exactly —
+>    code chunks via `format_code`, queries via `format_query`). Write
+>    `eval/vectors.json`: `{model, dim, generated_at, corpus_sha, vectors:{<sha256>:[...]}}`.
+> 3. **Compose override** (`docker-compose.replay.yml`) — override **only** the
+>    `embedder` service to build/run the stub on port 8080; drop the `model-fetch`
+>    dependency and the GPU `deploy` block. `qdrant`, `api`, and the indexer are
+>    unchanged (they already address `embedder:8080`).
+> 4. **CI job** `eval-replay` (ubuntu-latest): `docker compose -f docker-compose.yml
+>    -f docker-compose.replay.yml up -d --wait`, build the indexer image (the eval's
+>    index call does not pass `-Build`), then `pwsh -NoProfile -File eval/run-eval.ps1`,
+>    failing on non-zero exit. Deterministic; runs in seconds.
+>
+> **Tests:** unit/integration test for the stub (hit returns the recorded vector;
+> miss returns 503), using a tiny *synthetic* fixture under `tests/` — kept separate
+> from the real `eval/vectors.json`.
+>
+> **Human step (not the agent):** record `eval/vectors.json` on the GPU box and
+> commit it. Until it exists, keep `eval-replay` a normal (non-required) job. Once it
+> is committed and the job is observed green, the maintainer flips it to a required
+> branch-protection check — it becomes the real per-PR eval gate.
+>
+> **Verify:** with `eval/vectors.json` present, `eval-replay` passes and reproduces
+> the same per-case pass/fail as a live run (it must, by construction). Confirm that a
+> deliberately wrong-keyed fixture makes the stub 503 and the job fail loudly — no
+> silent pass.
+>
+> **Scope:** `eval/embedder-stub/`, `eval/record-vectors.ps1`,
+> `docker-compose.replay.yml`, the CI job, stub tests, README note. Do **not** modify
+> `eval/corpus/`, `eval/queries.yaml`, the indexer, or the ranking path.
+>
+> **DoD override:** verification is the `eval-replay` CI job (plus the maintainer's
+> recorder run) — the standing "run the eval locally in the sandbox" item does not
+> apply (no GPU/HF in the agent sandbox).
+>
+> [+ Standing requirements block, minus item 5's "stack must be up locally" clause]
+
+---
+
+## PR 7 — Nightly full-fidelity eval: CPU embedder on GitHub-hosted runners — ⏳ TODO
+
+> **Task:** Add a **nightly, full-fidelity** eval that runs the *real*
+> `nomic-embed-code` model on **CPU** on a GitHub-hosted runner — a drift detector
+> against the real embedder, complementing PR 6's deterministic per-PR gate. Not a
+> required PR check (it's slow).
+>
+> 1. **Compose override** (`docker-compose.cpu.yml`) — override **only** the
+>    `embedder` service: image → `ghcr.io/ggml-org/llama.cpp:server` (CPU build),
+>    remove the `deploy.resources` GPU reservation, keep `--embeddings --pooling last`
+>    and the `model-fetch` dependency. Everything else unchanged.
+> 2. **Workflow** (`.github/workflows/eval-nightly.yml`): triggers `schedule:`
+>    (nightly cron) + `workflow_dispatch`. On ubuntu-latest: cache the GGUF with
+>    `actions/cache` keyed on `MODEL_SHA256` (model ~4.3 GB; runner ~16 GB RAM fits a
+>    Q4_K_M 7B on CPU), `docker compose -f docker-compose.yml -f docker-compose.cpu.yml
+>    up -d --wait`, build the indexer image, run `pwsh eval/run-eval.ps1`, upload the
+>    eval JSON as an artifact, and surface failures (job red; optional summary).
+>
+> **Environment note:** GitHub-hosted runners have full internet (so `model-fetch`
+> reaches huggingface.co) and enough RAM — the limits that block the agent's own
+> sandbox do not apply on Actions. Verify by triggering the workflow via
+> `workflow_dispatch` on the PR branch and confirming it goes green; the first run is
+> minutes (CPU model load), cached runs faster.
+>
+> **Scope:** `docker-compose.cpu.yml` + `.github/workflows/eval-nightly.yml` only. No
+> app / ranking / harness changes.
+>
+> **DoD override:** verification is a green `workflow_dispatch` run of the nightly
+> workflow, not a local sandbox run.
+>
+> [+ Standing requirements block, minus item 5's local-stack clause]
 
 ---
 
