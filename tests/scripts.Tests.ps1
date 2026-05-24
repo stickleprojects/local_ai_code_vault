@@ -309,21 +309,26 @@ Describe 'query-smart.ps1' {
     AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
     It 'returns exact symbol matches with mode=symbol (case-sensitive, no partial-token matches)' {
-        @'
-class OrderService:
-    pass
-@' | Set-Content (Join-Path $repo 'service.py')
-        @'
-from service import OrderService
-def uses_symbol():
-    return OrderService()
-@' | Set-Content (Join-Path $repo 'consumer.py')
-        @'
-OrderServiceHelper = 1
-orderservice = 2
-@' | Set-Content (Join-Path $repo 'noise.py')
+        $repoPath = $script:repo
+        $repoPath | Should -Not -BeNullOrEmpty
 
-        $r = Invoke-Script 'query-smart.ps1' @('OrderService', '-Path', $repo, '-Symbol')
+        @(
+            'class OrderService:',
+            '    pass'
+        ) | Set-Content (Join-Path $repoPath 'service.py')
+        @(
+            'from service import OrderService',
+            'def uses_symbol():',
+            '    return OrderService()'
+        ) | Set-Content (Join-Path $repoPath 'consumer.py')
+        @(
+            'OrderServiceHelper = 1',
+            'orderservice = 2'
+        ) | Set-Content (Join-Path $repoPath 'noise.py')
+
+        & git -C $repoPath add service.py consumer.py noise.py
+
+        $r = Invoke-Script 'query-smart.ps1' @('OrderService', '-Path', $repoPath, '-Symbol')
         $r.Code | Should -Be 0
         $r.Json.mode | Should -Be 'symbol'
         $r.Json.used_vault | Should -BeTrue
