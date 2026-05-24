@@ -1,0 +1,24 @@
+services:
+  model-fetch:
+    profiles: ["gpu-only"]
+
+  embedder:
+    build:
+      context: .
+      dockerfile: eval/embedder-stub/Dockerfile
+    depends_on: []
+    environment:
+      EMBEDDER_STUB_MODE: replay
+      EMBEDDER_STUB_FIXTURE: /fixtures/vectors.json
+    volumes:
+      - ./eval:/fixtures:ro
+    command:
+      - uvicorn
+      - app:app
+      - --app-dir
+      - /app/eval/embedder-stub
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8080"
+    restart: unless-stopped

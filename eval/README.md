@@ -35,6 +35,33 @@ Behavior:
    - failing `must_pass` cases (excluding `baseline.json` `expected_fail` IDs), and
    - aggregate metric regressions versus `baseline.json` beyond `-Tolerance`.
 
+## Replayable CI path
+
+PR 6 adds a GPU-free replay mode for CI:
+
+- `docker-compose.replay.yml` swaps the live GPU embedder for `eval/embedder-stub/`.
+- The stub replays vectors from `eval/vectors.json` by `sha256(input_text)`.
+- On any missing key it returns HTTP 503 naming the missing hash; it never invents a vector.
+- CI job `eval-replay` skips cleanly until `eval/vectors.json` is committed, then becomes the per-PR replay gate.
+
+## Record `eval/vectors.json` (maintainer / GPU machine)
+
+Record the fixture from one real eval run:
+
+```powershell
+pwsh -NoProfile -File eval/record-vectors.ps1
+```
+
+What it does:
+
+1. Builds the stub image.
+2. Replaces the compose `embedder` service with a recording proxy on `embedder:8080`.
+3. Starts the real llama.cpp embedder as `real-embedder` on the same Docker network.
+4. Runs `eval/run-eval.ps1` so the recorded keys exactly match the live path.
+5. Writes `eval/vectors.json`.
+
+Commit `eval/vectors.json` only after reviewing the run output.
+
 ## Re-baseline
 
 To regenerate baseline from the current implementation:
@@ -67,4 +94,4 @@ Additional currently-tracked expected failures in baseline:
 
 ## Sandbox note for this branch
 
-In this CI sandbox, the stack cannot currently reach the model source required by `model-fetch` (`huggingface.co` DNS failure), so a full live baseline run cannot be completed here. Re-run `eval/run-eval.ps1 -UpdateBaseline` in an environment where the vault stack is reachable and commit the resulting baseline.
+The agent sandbox still cannot run the live GPU stack, so the maintainer-owned recorder step remains required for `eval/vectors.json`. Once that file is committed, `eval-replay` exercises the harness in CI without GPU/model download.

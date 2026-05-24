@@ -205,11 +205,25 @@ function New-TempEvalRepo {
     return $tmpRoot
 }
 
-function Load-YamlViaPython {
+function Load-YamlDocument {
     param([Parameter(Mandatory)][string]$Path)
 
+    $yamlText = Get-Content -LiteralPath $Path -Raw
+    if ([string]::IsNullOrWhiteSpace($yamlText)) {
+        return $null
+    }
+
+    $convertFromYaml = Get-Command -Name ConvertFrom-Yaml -ErrorAction SilentlyContinue
+    if ($null -ne $convertFromYaml) {
+        try {
+            return ($yamlText | ConvertFrom-Yaml -Ordered)
+        } catch {
+            throw "failed to parse YAML file: $Path"
+        }
+    }
+
     if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
-        throw 'python is required to parse YAML queries'
+        throw 'PowerShell ConvertFrom-Yaml or python+PyYAML is required to parse YAML queries'
     }
 
     $json = & python -c "import json,sys,yaml; print(json.dumps(yaml.safe_load(open(sys.argv[1], encoding='utf-8').read())))" $Path 2>$null
@@ -243,7 +257,7 @@ foreach ($requiredScript in @($healthScript, $indexScript, $querySmartScript)) {
 
 $queries = $null
 try {
-    $queries = Load-YamlViaPython -Path $QueriesPath
+    $queries = Load-YamlDocument -Path $QueriesPath
 } catch {
     Write-ResultAndExit -Object ([ordered]@{ error = $_.Exception.Message }) -Code $script:ExitCode.Usage
 }

@@ -389,6 +389,8 @@ pwsh -NoProfile -File tests/scripts.Tests.ps1
 pwsh -NoProfile -File tests/smoke_test.ps1
 ```
 
+Replay eval status: `eval-replay` is wired into CI, but it only runs once the maintainer-recorded `eval/vectors.json` fixture is committed. Until then the job skips cleanly and remains non-required. Full recorder/replay instructions: [eval/README.md](eval/README.md).
+
 CI runs `pytest` on every PR to `main`. Branch protection is strict — never commit directly to `main`; use feature branch → PR → merge. Full conventions: [CLAUDE.md](CLAUDE.md).
 
 ---

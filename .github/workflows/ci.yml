@@ -101,3 +101,30 @@ jobs:
           $c.Run.Exit = $true
           $c.Output.Verbosity = 'Detailed'
           Invoke-Pester -Configuration $c
+
+  eval-replay:
+    name: eval-replay
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Skip until recorded vectors are committed
+        if: ${{ hashFiles('eval/vectors.json') == '' }}
+        run: echo "eval/vectors.json is not committed yet; skipping replay eval."
+
+      - name: Start replay stack
+        if: ${{ hashFiles('eval/vectors.json') != '' }}
+        run: docker compose -f docker-compose.yml -f docker-compose.replay.yml up -d --wait
+
+      - name: Build indexer image
+        if: ${{ hashFiles('eval/vectors.json') != '' }}
+        run: docker build -t vault-indexer:local -f indexer/Dockerfile .
+
+      - name: Run replay eval
+        if: ${{ hashFiles('eval/vectors.json') != '' }}
+        shell: pwsh
+        run: pwsh -NoProfile -File eval/run-eval.ps1
+
+      - name: Stop replay stack
+        if: ${{ always() && hashFiles('eval/vectors.json') != '' }}
+        run: docker compose -f docker-compose.yml -f docker-compose.replay.yml down -v
