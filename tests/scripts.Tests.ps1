@@ -308,11 +308,69 @@ Describe 'query-smart.ps1' {
     BeforeAll { $script:repo = New-TempGitRepo }
     AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
+    It 'returns exact symbol matches with mode=symbol (case-sensitive, no partial-token matches)' {
+        $repoPath = $script:repo
+        $repoPath | Should -Not -BeNullOrEmpty
+
+        @(
+            'class OrderService:',
+            '    pass'
+        ) | Set-Content (Join-Path $repoPath 'service.py')
+        @(
+            'from service import OrderService',
+            'def uses_symbol():',
+            '    return OrderService()'
+        ) | Set-Content (Join-Path $repoPath 'consumer.py')
+        @(
+            'OrderServiceHelper = 1',
+            'orderservice = 2'
+        ) | Set-Content (Join-Path $repoPath 'noise.py')
+
+        & git -C $repoPath add service.py consumer.py noise.py
+
+        $r = Invoke-Script 'query-smart.ps1' @('OrderService', '-Path', $repoPath, '-Symbol')
+        $r.Code | Should -Be 0
+        $r.Json.mode | Should -Be 'symbol'
+        $r.Json.used_vault | Should -BeTrue
+        $r.Json.fallback_reason | Should -BeNullOrEmpty
+
+        $paths = @($r.Json.results | ForEach-Object { $_.path } | Sort-Object -Unique)
+        $paths | Should -Contain 'service.py'
+        $paths | Should -Contain 'consumer.py'
+        $paths | Should -Not -Contain 'noise.py'
+    }
+
+    It 'includes untracked (not-yet-committed) files so completeness holds' {
+        $repoPath = $script:repo
+
+        # A tracked file and an UNTRACKED file both define the symbol. A
+        # completeness mode must return BOTH; plain `git grep` only sees tracked
+        # files and would silently miss the untracked one. WidgetFactory is
+        # unique to this case so it doesn't collide with sibling tests sharing
+        # the repo.
+        @('class WidgetFactory:', '    pass') |
+            Set-Content (Join-Path $repoPath 'tracked_widget.py')
+        & git -C $repoPath add tracked_widget.py
+
+        @('def make():', '    return WidgetFactory()') |
+            Set-Content (Join-Path $repoPath 'untracked_widget.py')
+        # deliberately NOT `git add`ed — this is the completeness probe
+
+        $r = Invoke-Script 'query-smart.ps1' @('WidgetFactory', '-Path', $repoPath, '-Symbol')
+        $r.Code | Should -Be 0
+        $r.Json.mode | Should -Be 'symbol'
+
+        $paths = @($r.Json.results | ForEach-Object { $_.path } | Sort-Object -Unique)
+        $paths | Should -Contain 'tracked_widget.py'
+        $paths | Should -Contain 'untracked_widget.py'
+    }
+
     It 'falls back when the vault stack is unavailable' {
         $env:VAULT_API_BASE = "http://localhost:$(Get-FreePort)"
         try {
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'vault_unavailable'
             $r.Json.next_action | Should -Be 'workspace_search'
@@ -331,6 +389,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo, '-DoNotIndex')
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'indexing_declined'
         }
@@ -346,6 +405,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'no_semantic_hits'
             $r.Json.count | Should -Be 0
@@ -362,6 +422,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeTrue
             $r.Json.fallback_reason | Should -BeNullOrEmpty
             $r.Json.count | Should -Be 1

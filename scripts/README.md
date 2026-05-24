@@ -115,22 +115,19 @@ bound of context tokens avoided this query. Appends one best-effort JSONL
 ledger event per call (stats failures never fail search). 404 → exit 5
 (skill offers `/vault-index`). Rendering for the user is the skill's job.
 
-### `query-smart.ps1 <Query> [Path] [-Limit N] [-DoNotIndex] [-Build]`
+### `query-smart.ps1 <Query> [Path] [-Limit N] [-Mode semantic|symbol] [-Symbol] [-DoNotIndex] [-Build]`
 
 Shared Claude+Copilot search orchestration wrapper:
 
-- Checks stack reachability first.
-- Runs semantic query.
-- If unregistered (`code:5`), auto-indexes by default and retries once
-  (unless `-DoNotIndex`, which forces fallback).
-- If stack is down, indexing is declined, or no semantic hits are
-  found, returns a **successful** payload with
-  `used_vault:false`, `fallback_reason`, `fallback_message`, and
-  `next_action:"workspace_search"` so callers can continue normal file
-  search/read flow and explain why vault was not used.
+- **Semantic mode (default):** checks stack reachability, runs semantic query,
+  auto-indexes on `code:5` unless `-DoNotIndex`, and falls back with
+  `used_vault:false` when needed.
+- **Symbol mode (`-Mode symbol` or `-Symbol`):** exact identifier completeness
+  via `git grep -w` (case-sensitive), returning all matching lines/files.
+  This path is lexical (not semantic ranking) and sets `mode:"symbol"`.
 
 Primary output keeps query-compatible fields and adds index freshness:
-`{repo_id, query, count, results, savings, used_vault, index_stale, changed_files_not_indexed, ...}`.
+`{repo_id, query, mode, count, results, savings, used_vault, index_stale, changed_files_not_indexed, ...}`.
 
 ### `vault-savings.ps1 [Path] [-Days N]`
 
