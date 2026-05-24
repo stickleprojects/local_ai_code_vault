@@ -67,6 +67,11 @@ def test_full_index_counts_and_payload(tmp_path):
     assert all("/" in p["path"] or "." in p["path"] for p in pts)
     # Embedder saw raw code (AD-10), one text per chunk.
     assert len(emb.seen) == result.chunk_count
+    # PR4: declaration chunks carry a symbol; all payloads include the key
+    # (None for whole-file fallback, str for function/class declarations).
+    assert all("symbol" in p for p in pts)
+    declaration_pts = [p for p in pts if p["symbol"] is not None]
+    assert len(declaration_pts) > 0, "expected at least one declaration chunk"
 
 
 def test_registry_roundtrip_is_readable_by_phase_1_1(tmp_path):

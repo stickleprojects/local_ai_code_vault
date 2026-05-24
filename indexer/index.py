@@ -212,6 +212,10 @@ def run_index(
                     "start_line": c.start_line,
                     "end_line": c.end_line,
                     "code": c.text,
+                    # symbol is None for whole-file fallback chunks; present
+                    # for declaration chunks so the query side can boost
+                    # definition hits (PR4 symbol-aware ranking).
+                    "symbol": c.symbol,
                 },
             )
             for c, vec in zip(chunks, vectors)
