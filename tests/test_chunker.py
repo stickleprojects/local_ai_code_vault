@@ -69,3 +69,53 @@ def test_script_with_no_declarations_falls_back_to_whole_file():
 
 def test_empty_file_yields_no_chunks():
     assert chunk_source("e.py", b"   \n  \n", "python") == []
+
+
+# ---------------------------------------------------------------------------
+# Symbol extraction — PR4 addition.  Each declaration chunk must carry the
+# identifier of the symbol it defines; fallback (whole-file) chunks must not.
+# ---------------------------------------------------------------------------
+
+def test_python_symbol_extraction():
+    src = b"def foo():\n    pass\n\nclass Bar:\n    pass\n"
+    chunks = chunk_source("s.py", src, "python")
+    symbols = {c.symbol for c in chunks}
+    assert "foo" in symbols
+    assert "Bar" in symbols
+
+
+def test_csharp_symbol_extraction():
+    src = b"""namespace Demo {
+    public class Calc {
+        public int Add(int a, int b) { return a + b; }
+    }
+}
+"""
+    chunks = chunk_source("Calc.cs", src, "csharp")
+    symbols = {c.symbol for c in chunks}
+    assert "Calc" in symbols
+    assert "Add" in symbols
+
+
+def test_javascript_symbol_extraction():
+    src = b"function greet(name) { return 'hi ' + name; }\nclass Dog { bark() {} }\n"
+    chunks = chunk_source("g.js", src, "javascript")
+    symbols = {c.symbol for c in chunks}
+    assert "greet" in symbols
+    assert "Dog" in symbols
+
+
+def test_typescript_symbol_extraction():
+    src = b"export function add(a: number, b: number): number { return a + b; }\nexport class Box<T> { value!: T; }\n"
+    chunks = chunk_source("b.ts", src, "typescript")
+    symbols = {c.symbol for c in chunks}
+    assert "add" in symbols
+    assert "Box" in symbols
+
+
+def test_whole_file_fallback_has_no_symbol():
+    src = b"x = 1\nprint(x)\n"
+    chunks = chunk_source("s.py", src, "python")
+    assert len(chunks) == 1
+    assert chunks[0].symbol is None
+

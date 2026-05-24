@@ -19,6 +19,8 @@ from __future__ import annotations
 from pathlib import PurePosixPath
 from typing import Protocol, runtime_checkable
 
+import re
+
 import httpx
 
 from .models import EMBED_DIM, EMBED_MODEL, QueryHit, QueryResponse, format_query
@@ -28,6 +30,12 @@ TRIVIAL_FILE_NONBLANK_LINE_THRESHOLD = 2
 TRIVIAL_NOISE_FILE_BASENAMES = {"__init__.py"}
 OVERLAP_COLLAPSE_THRESHOLD = 0.5
 OVERFETCH_FACTOR = 3
+
+# Score bonus applied to a chunk whose ``symbol`` payload field matches a
+# token from the user's query.  Definition chunks are ranked above chunks
+# that merely reference the same identifier in their body text.
+# Tunable: increase to push definitions higher; decrease if over-ranking.
+DEFINITION_BOOST = 0.20
 
 
 @runtime_checkable
@@ -78,6 +86,16 @@ class QueryHandler:
     def __init__(self, registry: RegistryProtocol, embedder: QueryEmbedderProtocol):
         self.registry = registry
         self.embedder = embedder
+
+    @staticmethod
+    def _tokenize_query(q: str) -> frozenset[str]:
+        """Lower-case word tokens from a query string.
+
+        Used to match against chunk ``symbol`` fields: if any token equals
+        the declared symbol name (case-insensitive) the chunk receives the
+        :data:`DEFINITION_BOOST` score bonus.
+        """
+        return frozenset(t.lower() for t in re.split(r"\W+", q) if t)
 
     @staticmethod
     def _nonblank_line_count(text: str) -> int:
@@ -171,8 +189,17 @@ class QueryHandler:
             return response
 
         raw_results: list[QueryHit] = []
+        query_tokens = self._tokenize_query(q)
         for h in hits:
             pl = getattr(h, "payload", None) or {}
+            base_score = float(getattr(h, "score", 0.0))
+            # Boost chunks whose declared symbol matches a query token so
+            # definition sites outrank mere call sites (PR4 AD-high fix).
+            symbol = pl.get("symbol")
+            if symbol and symbol.lower() in query_tokens:
+                score = base_score + DEFINITION_BOOST
+            else:
+                score = base_score
             raw_results.append(
                 QueryHit(
                     path=pl.get("path", ""),
@@ -180,8 +207,11 @@ class QueryHandler:
                     start_line=int(pl.get("start_line", 0)),
                     end_line=int(pl.get("end_line", 0)),
                     code=pl.get("code", ""),
-                    score=float(getattr(h, "score", 0.0)),
+                    score=score,
                 )
             )
+        # Re-sort after boost: some definition chunks may have overtaken
+        # call-site chunks that scored higher in the raw embedding search.
+        raw_results.sort(key=lambda hit: hit.score, reverse=True)
         response.results = self._post_process_hits(raw_results, limit)
         return response
