@@ -8,7 +8,8 @@ silently making repos look unregistered in production.
 
 import os
 
-from indexer.index import run_index
+from indexer.index import ChunkPoint, run_index
+from indexer.qdrant_writer import QdrantWriter, UPSERT_BATCH_SIZE
 from src.inspection import Inspector
 from src.models import EMBED_DIM
 from src.registry import QdrantRegistry
@@ -151,3 +152,50 @@ def test_deleted_file_is_removed_on_incremental(tmp_path):
         v["language"] == "typescript"
         for v in writer.collections["r1"].values()
     )
+
+
+class _RecordingQdrantClient:
+    def __init__(self):
+        self.calls = []
+
+    def upsert(self, collection, points, wait=False):
+        self.calls.append(
+            {"collection": collection, "points": points, "wait": wait}
+        )
+
+
+def test_qdrant_writer_upsert_chunks_batches_and_waits():
+    fake_client = _RecordingQdrantClient()
+    writer = QdrantWriter("http://unused", client=fake_client)
+    points = [
+        ChunkPoint(
+            id=f"id-{i}",
+            vector=[float(i)],
+            payload={"path": f"f-{i}.py"},
+        )
+        for i in range(300)
+    ]
+
+    writer.upsert_chunks("repo-1", points)
+
+    assert len(fake_client.calls) == (
+        len(points) + UPSERT_BATCH_SIZE - 1
+    ) // UPSERT_BATCH_SIZE
+    assert all(call["collection"] == "repo-1" for call in fake_client.calls)
+    assert all(call["wait"] is True for call in fake_client.calls)
+    assert all(
+        len(call["points"]) <= UPSERT_BATCH_SIZE for call in fake_client.calls
+    )
+
+    seen_ids = [p.id for call in fake_client.calls for p in call["points"]]
+    assert sorted(seen_ids) == sorted(p.id for p in points)
+    assert len(seen_ids) == len(points)
+
+
+def test_qdrant_writer_upsert_chunks_empty_is_noop():
+    fake_client = _RecordingQdrantClient()
+    writer = QdrantWriter("http://unused", client=fake_client)
+
+    writer.upsert_chunks("repo-1", [])
+
+    assert fake_client.calls == []
