@@ -1,16 +1,78 @@
+<div align="center">
+
+<img src="docs/vault-logo.png" alt="local_ai_code_vault logo" width="180" />
+
 # local_ai_code_vault
 
-A local, Docker-contained semantic search vault for your code. Instead
-of Claude reading source files directly, it queries an indexed vector
-store; git commit hooks keep the index fresh.
+**GPU-accelerated semantic code search, running entirely on your machine.**  
+Stop waiting for an LLM to read your files — query a vector index instead.
+
+[![CI](https://github.com/stickleprojects/local_ai_code_vault/actions/workflows/ci.yml/badge.svg)](https://github.com/stickleprojects/local_ai_code_vault/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue?logo=python&logoColor=white)](https://www.python.org/)
+[![Docker](https://img.shields.io/badge/docker-compose%20v2-2496ED?logo=docker&logoColor=white)](https://docs.docker.com/compose/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
+[![Works with Claude](https://img.shields.io/badge/Claude-skill-blueviolet?logo=anthropic)](SKILL.md)
+[![Works with Copilot](https://img.shields.io/badge/Copilot-MCP-007ACC?logo=github)](vault_mcp/vault/README.md)
+
+</div>
+
+---
+
+## Table of Contents
+
+- [What it does](#what-it-does)
+- [How it works](#how-it-works)
+- [Requirements](#requirements)
+- [Quick start](#quick-start)
+  - [1 — Start the stack](#1--start-the-stack)
+  - [2 — Install the Claude skill](#2--install-the-claude-skill)
+  - [3 — Index a repo and search](#3--index-a-repo-and-search)
+- [Copilot setup (MCP)](#copilot-setup-mcp)
+- [Architecture](#architecture)
+- [Development](#development)
+- [Status](#status)
+
+---
+
+## What it does
+
+Your AI assistant shouldn't have to read every source file to answer a question about your code. `local_ai_code_vault` keeps a **local vector index** of any repo you point it at, so Claude or Copilot can run a semantic search and get relevant chunks back in milliseconds — with **zero data leaving your machine**.
+
+**Key features:**
+
+- 🧠 **Semantic search** — `nomic-embed-code` embeddings (dim 3584, cosine) understand code intent, not just keywords
+- ⚡ **GPU-accelerated** — `llama.cpp` server on CUDA; CPU fallback possible
+- 🌳 **AST-aware chunking** — tree-sitter splits C#, Python, JS, and TS at function/class boundaries
+- 🔄 **Auto-reindex on commit** — optional git hooks keep the index fresh after every `git commit`
+- 🤖 **Dual AI client support** — same scripts drive both Claude Code (`/vault-*` skill) and GitHub Copilot (MCP adapter)
+- 📦 **One clone, many repos** — install once, index any repo from anywhere
+
+---
 
 ## How it works
 
-A long-running stack (`qdrant` + a GPU `embedder` + a FastAPI `api`)
-serves search. An ephemeral container indexes one repo at a time
-(tree-sitter chunking → embeddings → Qdrant). PowerShell host scripts
-and a thin Claude skill (`/vault-*`) drive it. Architecture decisions
-and phase plan are in [plan.md](plan.md).
+```
+Your repo
+  │
+  ▼  git commit hook (optional)
+scripts/index-repo.ps1
+  │
+  ▼  docker run --rm  (ephemeral indexer container)
+tree-sitter chunker ──► nomic-embed-code ──► Qdrant (local vector store)
+                                                    │
+                              ┌─────────────────────┘
+                              ▼
+                     FastAPI /search endpoint
+                              │
+              ┌───────────────┴───────────────┐
+              ▼                               ▼
+     Claude Code skill                 Copilot MCP adapter
+     /vault-search "..."               vault_search(...)
+```
+
+All business logic lives in `scripts/*.ps1`. The Claude skill and Copilot MCP adapter are thin delegation layers — swapping or extending one client doesn't touch the other.
+
+---
 
 ## Requirements
 
@@ -178,20 +240,160 @@ Validation checklist:
       without adding repo files.
 - [ ] If a repo is unregistered (`code:5`), Copilot offers indexing.
 - [ ] Existing Claude `/vault-*` flow still works unchanged.
+| Requirement                        | Notes                                                                    |
+| ---------------------------------- | ------------------------------------------------------------------------ |
+| **Docker + Compose v2**            | `docker compose version`                                                 |
+| **NVIDIA GPU + Container Toolkit** | CPU-only mode possible but slow — see [README_SETUP.md](README_SETUP.md) |
+| **PowerShell 7+** (`pwsh`)         | Windows, macOS, or Linux                                                 |
+| **git** on PATH                    | For repo-id computation and hooks                                        |
+
+---
+
+## Quick start
+
+**You clone this repo once.** Its `scripts/` and `SKILL.md` are _never_ copied into the repos you search — the skill calls the central scripts by absolute path.
+
+### 1 — Start the stack
+
+```powershell
+cp .env.example .env
+docker compose up -d --build
+```
+
+Full GPU prerequisites and validation checklist: [README_SETUP.md](README_SETUP.md).
+
+### 2 — Install the Claude skill
+
+```powershell
+pwsh -NoProfile -File scripts/install-skill.ps1
+# then restart Claude Code
+```
+
+This places the skill in `~/.claude/skills/vault/` so `/vault-*` works in **any** repo, and records `VAULT_HOME` so scripts can always be found. Re-run if you move or update the clone; `-Remove` uninstalls.
+
+<details>
+<summary>⚠️ Optional: auto-allow permission hook (read before enabling)</summary>
+
+By default, Claude Code asks you to approve **every** `/vault-*` call. The optional `-PermissionHook Install` flag writes an auto-allow rule into your **global** `~/.claude/settings.json` so vault script calls run without prompting.
+
+> **This deliberately disables a safety check.** If you enable it, that is your choice and the risk is on you — anything that can produce a matching command pattern will run vault scripts unprompted. The installer is fail-closed (backs up `settings.json` first) and will not proceed unless you type `yes` interactively or pass the explicit flag.
+
+The safe default does nothing — try `/vault-*` with prompting on first, and only enable the bypass later if you accept the trade-off.
+
+```powershell
+# opt in explicitly:
+pwsh -NoProfile -File scripts/install-skill.ps1 -PermissionHook Install
+
+# undo:
+pwsh -NoProfile -File scripts/install-skill.ps1 -Remove
+```
+
+Full trade-off analysis and the exact hook JSON: [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md).
+
+</details>
+
+### 3 — Index a repo and search
+
+Open **any** repo in Claude Code, then:
+
+```
+/vault-index           ← chunks + embeds the current repo
+/vault-search "how does authentication work?"
+/vault-status          ← check indexing state
+/vault-inspect         ← browse what's in the index
+/vault-hooks           ← install git hooks for auto-reindex
+```
+
+Or drive it manually from this clone:
+
+```powershell
+pwsh -NoProfile -File scripts/index-repo.ps1 C:\path\to\your\repo -Build -Wait
+```
+
+Script I/O contracts and exit codes: [scripts/README.md](scripts/README.md).
+
+---
+
+## Copilot setup (MCP)
+
+The same scripts are accessible from GitHub Copilot via a thin [MCP](https://modelcontextprotocol.io/) adapter — no per-repo config files required.
+
+```powershell
+pwsh -NoProfile -File scripts/install-copilot.ps1
+# restart VS Code / Copilot
+```
+
+Then in any repo, ask Copilot to call `vault_index`, `vault_search`, `vault_status`, or `vault_inspect`.
+
+**Validation checklist:**
+
+- [ ] `install-copilot.ps1` reports `installed:true` with a `settings_path`
+- [ ] Copilot can call `vault_index` / `vault_status` in a new repo without adding any repo-local files
+- [ ] An unregistered repo (`code:5`) triggers Copilot to offer indexing
+- [ ] Existing Claude `/vault-*` flow still works unchanged
+
+---
+
+## Architecture
+
+```mermaid
+graph TD
+    subgraph "Docker stack (always running)"
+        Q[(Qdrant\nvector store)]
+        E[llama.cpp\nnomic-embed-code\nGPU]
+        A[FastAPI\n/search /registry]
+    end
+
+    subgraph "Indexer (ephemeral container)"
+        C[tree-sitter\nchunker] --> EM[embedder] --> W[Qdrant\nwriter]
+    end
+
+    subgraph "Host (PowerShell scripts)"
+        IR[index-repo.ps1] --> C
+        QS[query.ps1] --> A
+    end
+
+    subgraph "AI clients"
+        CL[Claude Code\nSKILL.md] --> IR
+        CL --> QS
+        CP[Copilot\nMCP server.py] --> IR
+        CP --> QS
+    end
+
+    E <--> EM
+    W --> Q
+    A --> Q
+```
+
+Design decisions (AD-1 through AD-10) and the full phase plan: [plan.md](plan.md) · [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+---
 
 ## Development
 
-- Tests: `pytest` (Python, in-memory fakes) and `tests/scripts.Tests.ps1`
-  (Pester, host-script logic — fakes git/docker/API, no stack needed).
-  Both run in CI on PRs to `main`. The live end-to-end check is the
-  manual gate `pwsh -NoProfile -File tests/smoke_test.ps1` (needs the
-  running stack; not in CI).
-- Contributing: never commit to `main` — feature branch → PR → merge;
-  keep CI green. See [CLAUDE.md](CLAUDE.md) for architecture and
-  conventions.
+```bash
+# Python tests (in-memory fakes — no stack needed)
+pytest -v
+
+# PowerShell tests (fakes git/docker/API — no stack needed)
+pwsh -NoProfile -File tests/scripts.Tests.ps1
+
+# Live end-to-end smoke test (requires running stack)
+pwsh -NoProfile -File tests/smoke_test.ps1
+```
+
+CI runs `pytest` on every PR to `main`. Branch protection is strict — never commit directly to `main`; use feature branch → PR → merge. Full conventions: [CLAUDE.md](CLAUDE.md).
+
+---
 
 ## Status
 
-Phases 1 (stack, indexer, query), 2 (skill + scripts), and 3 (testing,
-validation & docs) complete. Phase 4.2 (CHANGELOG + release tagging)
-done; 4.1/4.3 (image publishing) deferred — see [plan.md](plan.md).
+| Phase     | Description                       | State       |
+| --------- | --------------------------------- | ----------- |
+| 1         | Docker stack, indexer, query API  | ✅ complete |
+| 2         | Claude skill + PowerShell scripts | ✅ complete |
+| 3         | Testing, validation & docs        | ✅ complete |
+| 4.2       | CHANGELOG + release tagging       | ✅ complete |
+| 4.1 / 4.3 | Image publishing to registry      | ⏸ deferred  |
+
+See [plan.md](plan.md) for the full roadmap and architecture decision log.
