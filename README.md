@@ -41,6 +41,7 @@ Your AI assistant shouldn't have to read every source file to answer a question 
 **Key features:**
 
 - 🧠 **Semantic search** — `nomic-embed-code` embeddings (dim 3584, cosine) understand code intent, not just keywords
+- 🔎 **Exact symbol mode** — grep-backed identifier completeness for “where is `Foo` defined/referenced?”
 - ⚡ **GPU-accelerated** — `llama.cpp` server on CUDA; CPU fallback possible
 - 🌳 **AST-aware chunking** — tree-sitter splits C#, Python, JS, and TS at function/class boundaries
 - 🔄 **Auto-reindex on commit** — optional git hooks keep the index fresh after every `git commit`
@@ -205,6 +206,12 @@ single script wrapper (`scripts/query-smart.ps1`):
 
 This keeps vault preferred (for token/context efficiency) without
 blocking normal coding flow when vault cannot help.
+
+## Semantic vs exact symbol search
+
+- Use **semantic search** for fuzzy discovery and intent-based lookup.
+- Use **symbol mode** (`query-smart.ps1 ... -Symbol`, or `-Mode symbol`) for
+  exact identifier completeness (“does this symbol exist anywhere?” / “where are all references?”).
 
 ## Shared Claude + Copilot architecture
 

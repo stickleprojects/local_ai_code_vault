@@ -308,11 +308,39 @@ Describe 'query-smart.ps1' {
     BeforeAll { $script:repo = New-TempGitRepo }
     AfterAll { Remove-Item -Recurse -Force $script:repo -ErrorAction SilentlyContinue }
 
+    It 'returns exact symbol matches with mode=symbol (case-sensitive, no partial-token matches)' {
+        @'
+class OrderService:
+    pass
+@' | Set-Content (Join-Path $repo 'service.py')
+        @'
+from service import OrderService
+def uses_symbol():
+    return OrderService()
+@' | Set-Content (Join-Path $repo 'consumer.py')
+        @'
+OrderServiceHelper = 1
+orderservice = 2
+@' | Set-Content (Join-Path $repo 'noise.py')
+
+        $r = Invoke-Script 'query-smart.ps1' @('OrderService', '-Path', $repo, '-Symbol')
+        $r.Code | Should -Be 0
+        $r.Json.mode | Should -Be 'symbol'
+        $r.Json.used_vault | Should -BeTrue
+        $r.Json.fallback_reason | Should -BeNullOrEmpty
+
+        $paths = @($r.Json.results | ForEach-Object { $_.path } | Sort-Object -Unique)
+        $paths | Should -Contain 'service.py'
+        $paths | Should -Contain 'consumer.py'
+        $paths | Should -Not -Contain 'noise.py'
+    }
+
     It 'falls back when the vault stack is unavailable' {
         $env:VAULT_API_BASE = "http://localhost:$(Get-FreePort)"
         try {
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'vault_unavailable'
             $r.Json.next_action | Should -Be 'workspace_search'
@@ -331,6 +359,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo, '-DoNotIndex')
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'indexing_declined'
         }
@@ -346,6 +375,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeFalse
             $r.Json.fallback_reason | Should -Be 'no_semantic_hits'
             $r.Json.count | Should -Be 0
@@ -362,6 +392,7 @@ Describe 'query-smart.ps1' {
             $env:VAULT_API_BASE = $stub.Base
             $r = Invoke-Script 'query-smart.ps1' @('q', '-Path', $repo)
             $r.Code | Should -Be 0
+            $r.Json.mode | Should -Be 'semantic'
             $r.Json.used_vault | Should -BeTrue
             $r.Json.fallback_reason | Should -BeNullOrEmpty
             $r.Json.count | Should -Be 1

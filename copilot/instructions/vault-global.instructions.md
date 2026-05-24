@@ -14,3 +14,5 @@ Rules:
   workspace file search/read flow and surface `fallback_message`.
 - If the user explicitly says `do not index`, pass `doNotIndex: true`
   to `vault_search`.
+- Use semantic `vault_search` for fuzzy discovery, and symbol mode
+  (`mode: "symbol"` and/or `symbol: true`) for exact identifier completeness.
