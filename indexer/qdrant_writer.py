@@ -18,6 +18,7 @@ from qdrant_client import models as qm
 from .index import ChunkPoint, CollectionStats, RegistryPoint, WriterProtocol
 
 REGISTRY_COLLECTION = "__vault_registry__"
+UPSERT_BATCH_SIZE = 128
 
 
 class QdrantWriter(WriterProtocol):
@@ -28,7 +29,7 @@ class QdrantWriter(WriterProtocol):
     @property
     def client(self) -> QdrantClient:
         if self._client is None:
-            self._client = QdrantClient(url=self._url, timeout=30.0)
+            self._client = QdrantClient(url=self._url, timeout=120.0)
         return self._client
 
     def _names(self) -> set[str]:
@@ -66,13 +67,16 @@ class QdrantWriter(WriterProtocol):
     def upsert_chunks(self, collection: str, points: list[ChunkPoint]) -> None:
         if not points:
             return
-        self.client.upsert(
-            collection,
-            points=[
-                qm.PointStruct(id=p.id, vector=p.vector, payload=p.payload)
-                for p in points
-            ],
-        )
+        for i in range(0, len(points), UPSERT_BATCH_SIZE):
+            batch = points[i : i + UPSERT_BATCH_SIZE]
+            self.client.upsert(
+                collection,
+                points=[
+                    qm.PointStruct(id=p.id, vector=p.vector, payload=p.payload)
+                    for p in batch
+                ],
+                wait=True,
+            )
 
     def collection_stats(self, collection: str) -> CollectionStats:
         stats = CollectionStats()
