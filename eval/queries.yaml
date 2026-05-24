@@ -1,0 +1,103 @@
+# Vault retrieval eval — labelled query cases (HUMAN-OWNED source of truth)
+#
+# These labels define "correct" retrieval. Review them; do not let an agent
+# rewrite them. Schema: see EVAL-HARNESS-SPEC.md §4. Metrics: §5.
+#
+# Corpus paths are relative to eval/corpus/. The corpus is in eval/corpus/ and
+# deliberately reproduces the failure modes from SEARCH-IMPACT-ANALYSIS.md:
+#   pkg/__init__.py        - trivial 1-line file (noise probe)
+#   pkg/fixtures.py        - defines make_session()         (definition target)
+#   pkg/service.py         - defines class OrderService      (definition / symbol target)
+#   tests/conftest.py      - defines db_session fixture      (under-ranked-conftest probe)
+#   tests/test_service.py  - heavy OrderService call sites   (should NOT out-rank definitions)
+#
+# "CURRENT" notes record expected status against TODAY's vault, so baseline.json
+# is recorded honestly. The defect cases are EXPECTED TO FAIL today and are
+# fixed by later PRs (see COPILOT-PROMPTS.md).
+
+# ----------------------------------------------------------------------------
+# Non-regression anchor — works today, must keep working through every PR.
+# ----------------------------------------------------------------------------
+- id: semantic-anchor
+  query: "publish order to the downstream queue service"
+  k: 5
+  mode: semantic
+  expect_in_top_k:
+    - "pkg/service.py"
+  must_pass: true
+  tags: [anchor, semantic]
+  # CURRENT: PASS
+
+# ----------------------------------------------------------------------------
+# Definition / fixture discovery — the headline Query-B defect.
+# A search naming the fixture concept must surface the DEFINING files
+# (conftest.py / fixtures.py), not the empty __init__.py.
+# ----------------------------------------------------------------------------
+- id: definition-fixture
+  query: "savepoint isolated database session test fixture setup"
+  k: 5
+  mode: semantic
+  expect_in_top_k:
+    - "tests/conftest.py"
+    - "pkg/fixtures.py"
+  forbid_in_top_k:
+    - "**/__init__.py"
+  must_pass: true
+  tags: [definition, fixture, noise]
+  # CURRENT: FAIL (conftest under-ranked; __init__.py appears). Fixed by PR2 (noise) + PR4 (ranking).
+
+- id: fixture-discovery-natural
+  query: "how do I get a test database session that rolls back after each test"
+  k: 5
+  mode: semantic
+  expect_in_top_k:
+    - "tests/conftest.py"
+    - "pkg/fixtures.py"
+  must_pass: false   # softer NL-phrasing variant; tracked in aggregate, not hard-gated
+  tags: [definition, fixture, natural-language]
+  # CURRENT: FAIL expected. Promote to must_pass once PR4 lands.
+
+# ----------------------------------------------------------------------------
+# Definition-above-call-site ranking — the definition must beat the test that
+# merely uses the symbol.
+# ----------------------------------------------------------------------------
+- id: definition-above-callsite
+  query: "OrderService publish an order implementation"
+  k: 5
+  mode: semantic
+  expect_rank_above:
+    above: "pkg/service.py"
+    below: "tests/test_service.py"
+  must_pass: true
+  tags: [definition, ranking]
+  # CURRENT: FAIL likely (call sites out-rank definition). Fixed by PR4.
+
+# ----------------------------------------------------------------------------
+# Trivial-file noise guard — a vague query that tends to pull the marker
+# __init__.py. After PR2 it must never appear in top-k.
+# ----------------------------------------------------------------------------
+- id: noise-guard-init
+  query: "order package module"
+  k: 5
+  mode: semantic
+  forbid_in_top_k:
+    - "**/__init__.py"
+  must_pass: true
+  tags: [noise]
+  # CURRENT: FAIL expected (__init__.py surfaces). Fixed by PR2.
+
+# ----------------------------------------------------------------------------
+# Exact-symbol completeness — exercises the new -Symbol mode (PR3).
+# Completeness, not ranking: ALL files containing the exact identifier must
+# come back.
+# ----------------------------------------------------------------------------
+- id: symbol-completeness
+  query: "OrderService"
+  k: 10
+  mode: symbol
+  expect_all:
+    - "pkg/service.py"
+    - "tests/test_service.py"
+  must_pass: true
+  tags: [symbol, completeness]
+  # CURRENT: N/A until PR3 adds symbol mode; runner should report "mode unsupported" cleanly until then.
