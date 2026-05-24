@@ -1,0 +1,101 @@
+{
+  "generated_at": null,
+  "note": "Baseline placeholder: stack/model download unavailable in this sandbox, so aggregate metrics were not captured here. Re-generate with eval/run-eval.ps1 -UpdateBaseline in a reachable environment.",
+  "tolerance": 0.0,
+  "expected_fail": [
+    "definition-fixture",
+    "definition-above-callsite",
+    "noise-guard-init",
+    "symbol-completeness"
+  ],
+  "aggregate": {
+    "case_count": 6,
+    "passed_count": null,
+    "pass_rate": null,
+    "recall_at_k": null,
+    "mrr": null,
+    "noise_at_k": null,
+    "definition_rank_pass_rate": null,
+    "symbol_completeness": null
+  },
+  "cases": [
+    {
+      "id": "semantic-anchor",
+      "must_pass": true,
+      "passed": true,
+      "failed_checks": [],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": null,
+        "symbol_completeness": null
+      }
+    },
+    {
+      "id": "definition-fixture",
+      "must_pass": true,
+      "passed": false,
+      "failed_checks": ["expect_in_top_k", "forbid_in_top_k"],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": null,
+        "symbol_completeness": null
+      }
+    },
+    {
+      "id": "fixture-discovery-natural",
+      "must_pass": false,
+      "passed": false,
+      "failed_checks": ["expect_in_top_k"],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": null,
+        "symbol_completeness": null
+      }
+    },
+    {
+      "id": "definition-above-callsite",
+      "must_pass": true,
+      "passed": false,
+      "failed_checks": ["expect_rank_above"],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": false,
+        "symbol_completeness": null
+      }
+    },
+    {
+      "id": "noise-guard-init",
+      "must_pass": true,
+      "passed": false,
+      "failed_checks": ["forbid_in_top_k"],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": null,
+        "symbol_completeness": null
+      }
+    },
+    {
+      "id": "symbol-completeness",
+      "must_pass": true,
+      "passed": false,
+      "failed_checks": ["mode_unsupported", "expect_all"],
+      "metrics": {
+        "recall_at_k": null,
+        "mrr": null,
+        "noise_at_k": null,
+        "definition_rank_pass": null,
+        "symbol_completeness": null
+      }
+    }
+  ]
+}
