@@ -16,12 +16,18 @@ local rather than invert that layering.
 
 from __future__ import annotations
 
+from pathlib import PurePosixPath
 from typing import Protocol, runtime_checkable
 
 import httpx
 
 from .models import EMBED_DIM, EMBED_MODEL, QueryHit, QueryResponse, format_query
 from .registry import RegistryProtocol
+
+TRIVIAL_FILE_NONBLANK_LINE_THRESHOLD = 2
+TRIVIAL_NOISE_FILE_BASENAMES = {"__init__.py"}
+OVERLAP_COLLAPSE_THRESHOLD = 0.5
+OVERFETCH_FACTOR = 3
 
 
 @runtime_checkable
@@ -73,6 +79,76 @@ class QueryHandler:
         self.registry = registry
         self.embedder = embedder
 
+    @staticmethod
+    def _nonblank_line_count(text: str) -> int:
+        return sum(1 for line in text.splitlines() if line.strip())
+
+    @staticmethod
+    def _line_span(start_line: int, end_line: int) -> tuple[int, int]:
+        start = int(start_line)
+        end = int(end_line)
+        if end < start:
+            start, end = end, start
+        return start, end
+
+    @classmethod
+    def _should_collapse(cls, a: QueryHit, b: QueryHit) -> bool:
+        if a.path != b.path:
+            return False
+        a_start, a_end = cls._line_span(a.start_line, a.end_line)
+        b_start, b_end = cls._line_span(b.start_line, b.end_line)
+
+        overlap_start = max(a_start, b_start)
+        overlap_end = min(a_end, b_end)
+        if overlap_end < overlap_start:
+            return False
+
+        overlap = overlap_end - overlap_start + 1
+        a_len = max(1, a_end - a_start + 1)
+        b_len = max(1, b_end - b_start + 1)
+        smaller = min(a_len, b_len)
+
+        # Contains / nested ranges should always collapse.
+        if (a_start <= b_start and a_end >= b_end) or (
+            b_start <= a_start and b_end >= a_end
+        ):
+            return True
+        return (overlap / smaller) > OVERLAP_COLLAPSE_THRESHOLD
+
+    @classmethod
+    def _post_process_hits(cls, hits: list[QueryHit], limit: int) -> list[QueryHit]:
+        nonblank_by_path: dict[str, int] = {}
+        for hit in hits:
+            nonblank = cls._nonblank_line_count(hit.code)
+            current = nonblank_by_path.get(hit.path, 0)
+            if nonblank > current:
+                nonblank_by_path[hit.path] = nonblank
+
+        def is_trivial_noise_file(path: str) -> bool:
+            if not path:
+                return False
+            basename = PurePosixPath(path).name
+            return basename in TRIVIAL_NOISE_FILE_BASENAMES
+
+        filtered = [
+            hit
+            for hit in hits
+            if not (
+                is_trivial_noise_file(hit.path)
+                and nonblank_by_path.get(hit.path, 0)
+                <= TRIVIAL_FILE_NONBLANK_LINE_THRESHOLD
+            )
+        ]
+
+        collapsed: list[QueryHit] = []
+        for hit in filtered:
+            if any(cls._should_collapse(hit, kept) for kept in collapsed):
+                continue
+            collapsed.append(hit)
+            if len(collapsed) >= limit:
+                break
+        return collapsed
+
     def query(self, repo_id: str, q: str, limit: int = 10) -> QueryResponse | None:
         if self.registry.get_repo(repo_id) is None:
             return None
@@ -85,17 +161,19 @@ class QueryHandler:
             if repo_id not in collections:
                 return response  # registered but nothing indexed yet
             vector = self.embedder.embed_query(q)
+            overfetch_limit = max(limit, limit * OVERFETCH_FACTOR)
             hits = client.query_points(
-                repo_id, query=vector, limit=limit, with_payload=True
+                repo_id, query=vector, limit=overfetch_limit, with_payload=True
             ).points
         except Exception:
             # Search is best-effort; never 500 a query path on a flaky
             # embedder/Qdrant — return what we have (possibly nothing).
             return response
 
+        raw_results: list[QueryHit] = []
         for h in hits:
             pl = getattr(h, "payload", None) or {}
-            response.results.append(
+            raw_results.append(
                 QueryHit(
                     path=pl.get("path", ""),
                     language=pl.get("language"),
@@ -105,4 +183,5 @@ class QueryHandler:
                     score=float(getattr(h, "score", 0.0)),
                 )
             )
+        response.results = self._post_process_hits(raw_results, limit)
         return response
